@@ -136,7 +136,7 @@ export type RuntimeHost = {
   touch(a: RuntimeEntity, b: RuntimeEntity): boolean;
   keyDown(key: string): boolean;
   keyPressed(key: string): boolean;
-  playSound(name: string): void;
+  playSound(name: string, volume?: number): void;
   follow(entity: RuntimeEntity): void;
   requestReset(): void;
   getTime(): { time: number; deltaTime: number; frameCount: number };
@@ -395,7 +395,14 @@ class StaticAnalyzer {
   private typeOf(expr: Expr, scope: StaticScope): StaticType {
     switch (expr.kind) {
       case "literal":
-        if (typeof expr.value === "number") return /[fF]$/.test(expr.token.value) ? "float" : Number.isInteger(expr.value) ? "int" : "float";
+        if (typeof expr.value === "number") {
+          if (/[fF]$/.test(expr.token.value)) return "float";
+          if (expr.token.value.includes(".")) {
+            this.add(expr.token, `小数は ${expr.token.value}f のように末尾に f を付けてください。`);
+            return "float";
+          }
+          return Number.isInteger(expr.value) ? "int" : "float";
+        }
         if (typeof expr.value === "boolean") return "bool";
         if (typeof expr.value === "string") return "string";
         return "unknown";
@@ -642,7 +649,15 @@ class StaticAnalyzer {
       return "unknown";
     }
     if (ownerType === "sound") {
-      if (method === "Play") return this.expectArgs(method, args, ["string"], token) ? "void" : "void";
+      if (method === "Play") {
+        if (args.length !== 1 && args.length !== 2) {
+          this.add(token, `Play の引数は 1 個または 2 個です。現在は ${args.length} 個あります。`);
+          return "void";
+        }
+        this.expectAssignable("string", args[0] ?? "unknown", token);
+        if (args[1]) this.expectAssignable("float", args[1], token);
+        return "void";
+      }
       this.add(token, `sound.${method} は存在しません。`);
       return "unknown";
     }
@@ -1504,7 +1519,7 @@ export class DslInstance {
       return null;
     }
     if (name === "sound" && method === "Play") {
-      this.host.playSound(stringify(args[0] ?? ""));
+      this.host.playSound(stringify(args[0] ?? ""), args[1] === undefined ? undefined : numArg(args, 1, token));
       return null;
     }
     if (name === "camera" && method === "Follow") {

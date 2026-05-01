@@ -23,6 +23,12 @@ class CanvasHost implements RuntimeHost {
   pressed = new Set<string>();
   resetRequested = false;
   private readonly images = new Map<string, HTMLImageElement>();
+  private readonly soundBuffers = new Map<string, Promise<AudioBuffer | null>>();
+  private readonly readySounds = new Set<string>();
+  private readonly pendingSoundStarts = new Set<string>();
+  private readonly activeSoundSources = new Set<AudioScheduledSourceNode>();
+  private audioContext: AudioContext | null = null;
+  private soundGeneration = 0;
   private id = 1;
   private startedAt = performance.now();
   private lastAt = performance.now();
@@ -55,6 +61,7 @@ class CanvasHost implements RuntimeHost {
   }
 
   clear() {
+    this.stopAllSounds();
     this.entities = [];
     this.id = 1;
     this.resetRequested = false;
@@ -94,16 +101,35 @@ class CanvasHost implements RuntimeHost {
     return this.pressed.has(key);
   }
 
-  playSound(name: string) {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) return;
-    const context = new AudioContextClass();
+  playSound(name: string, volume = 0.75) {
+    const safeVolume = clampVolume(volume);
+    const generation = this.soundGeneration;
+    const bufferPromise = this.loadSoundBuffer(name);
+    if (!this.readySounds.has(name)) {
+      if (this.pendingSoundStarts.has(name)) return;
+      this.pendingSoundStarts.add(name);
+    }
+    bufferPromise.then((buffer) => {
+      this.pendingSoundStarts.delete(name);
+      if (generation !== this.soundGeneration) return;
+      if (buffer) {
+        this.playSoundBuffer(buffer, safeVolume);
+        return;
+      }
+      this.playFallbackSound(name, safeVolume);
+    });
+  }
+
+  private playFallbackSound(name: string, volume = 0.75) {
+    const context = this.getAudioContext();
+    if (!context) return;
     const osc = context.createOscillator();
     const gain = context.createGain();
     osc.frequency.value = name === "coin" ? 880 : 440;
-    gain.gain.value = 0.04;
+    gain.gain.value = 0.04 * clampVolume(volume);
     osc.connect(gain);
     gain.connect(context.destination);
+    this.trackSoundSource(osc);
     osc.start();
     osc.stop(context.currentTime + 0.07);
   }
@@ -210,6 +236,75 @@ class CanvasHost implements RuntimeHost {
     this.images.set(name, image);
   }
 
+  private loadSoundBuffer(name: string) {
+    const cached = this.soundBuffers.get(name);
+    if (cached) return cached;
+    const promise = this.resolveSoundBuffer(soundUrls(name, this.assetScope)).then((buffer) => {
+      if (buffer) this.readySounds.add(name);
+      return buffer;
+    });
+    this.soundBuffers.set(name, promise);
+    return promise;
+  }
+
+  private async resolveSoundBuffer(candidates: string[]): Promise<AudioBuffer | null> {
+    const context = this.getAudioContext();
+    if (!context) return null;
+    for (const url of candidates) {
+      try {
+        const response = await fetch(url, { cache: "force-cache" });
+        if (!response.ok) continue;
+        const bytes = await response.arrayBuffer();
+        return await context.decodeAudioData(bytes);
+      } catch {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  private playSoundBuffer(buffer: AudioBuffer, volume: number) {
+    const context = this.getAudioContext();
+    if (!context) return;
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    gain.gain.value = volume;
+    source.connect(gain);
+    gain.connect(context.destination);
+    this.trackSoundSource(source);
+    source.start();
+  }
+
+  private getAudioContext() {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+    this.audioContext ??= new AudioContextClass();
+    if (this.audioContext.state === "suspended") {
+      this.audioContext.resume().catch(() => undefined);
+    }
+    return this.audioContext;
+  }
+
+  private trackSoundSource(source: AudioScheduledSourceNode) {
+    this.activeSoundSources.add(source);
+    source.addEventListener("ended", () => this.activeSoundSources.delete(source), { once: true });
+  }
+
+  private stopAllSounds() {
+    this.soundGeneration += 1;
+    this.pendingSoundStarts.clear();
+    for (const source of this.activeSoundSources) {
+      try {
+        source.stop();
+      } catch {
+        // The source may already have ended.
+      }
+      source.disconnect();
+    }
+    this.activeSoundSources.clear();
+  }
+
   private drawSprite(ctx: CanvasRenderingContext2D, entity: RuntimeEntity) {
     if (entity.imageName && !this.images.has(entity.imageName)) this.loadImage(entity.imageName);
     const image = entity.imageName ? this.images.get(entity.imageName) : undefined;
@@ -247,6 +342,11 @@ function normalizeKey(event: KeyboardEvent) {
   return event.key;
 }
 
+function clampVolume(value: number) {
+  if (!Number.isFinite(value)) return 0.75;
+  return Math.max(0, Math.min(1, value));
+}
+
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
   if (target.closest(".cm-editor")) return true;
@@ -254,8 +354,16 @@ function isEditableTarget(target: EventTarget | null) {
 }
 
 function spriteUrls(name: string, scope: string) {
+  return assetUrls(name, scope, ["png", "jpg", "jpeg", "gif", "webp"]);
+}
+
+function soundUrls(name: string, scope: string) {
+  return assetUrls(name, scope, ["mp3", "wav", "ogg", "m4a"]);
+}
+
+function assetUrls(name: string, scope: string, extensions: string[]) {
   const hasExtension = /\.[A-Za-z0-9]+$/.test(name);
-  const fileNames = hasExtension ? [name] : ["png", "jpg", "jpeg", "gif", "webp"].map((extension) => `${name}.${extension}`);
+  const fileNames = hasExtension ? [name] : extensions.map((extension) => `${name}.${extension}`);
   const urls: string[] = [];
   for (const fileName of fileNames) {
     if (scope) urls.push(assetUrl(fileName, scope));

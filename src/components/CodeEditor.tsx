@@ -76,7 +76,7 @@ const memberCompletions: Record<string, { label: string; type: string; detail?: 
   ],
   Random: [
     { label: "Range", type: "function", detail: "Random.Range(min, max)" },
-    { label: "Chance", type: "function", detail: "Random.Chance(rate)" }
+    { label: "Chance", type: "function", detail: "Random.Chance(0.01f)" }
   ],
   Math: [
     { label: "Round", type: "function", detail: "Math.Round(value, digits)" },
@@ -89,7 +89,7 @@ const memberCompletions: Record<string, { label: string; type: string; detail?: 
     { label: "Pressed", type: "function", detail: "key.Pressed(\"Space\")" }
   ],
   game: [{ label: "Reset", type: "function" }],
-  sound: [{ label: "Play", type: "function", detail: "sound.Play(\"coin\")" }],
+  sound: [{ label: "Play", type: "function", detail: "sound.Play(\"jump\", 0.5f)" }],
   camera: [{ label: "Follow", type: "function" }],
   GameObject: [
     { label: "x", type: "property" },
@@ -176,7 +176,7 @@ const apiDocs: Record<string, string> = {
   "key.Down": "キーを押している間trueです: key.Down(\"A\")",
   "key.Pressed": "キーを押した瞬間だけtrueです: key.Pressed(\"Space\")",
   "Random.Range": "minからmaxまでの乱数を返します。",
-  "Random.Chance": "指定した確率でtrueを返します。0.01なら約1%。",
+  "Random.Chance": "指定した確率でtrueを返します。0.01fなら約1%。",
   "Math.Round": "数値を指定した小数桁に丸めます: Math.Round(value, digits)",
   "Math.Fixed": "数値を指定した小数桁の文字列にします: Math.Fixed(value, digits)",
   "Math.Floor": "小数を切り捨てます。",

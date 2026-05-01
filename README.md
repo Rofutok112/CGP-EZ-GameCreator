@@ -101,6 +101,15 @@ player.flipX = true;
 
 `Create.Sprite` も `SetSprite` も、当たり判定や表示サイズは画像サイズではなく `GameObject` の `width` / `height` を基準にします。
 
+音声を鳴らす場合:
+
+```csharp
+sound.Play("sounds/jump");
+sound.Play("coin.wav", 0.5f);
+```
+
+2つ目の引数で音量を `0.0f` から `1.0f` の範囲で指定できます。省略した場合は標準音量で鳴ります。拡張子を省略した場合は、`mp3`, `wav`, `ogg`, `m4a` の順に探します。生徒ごとの `assets/` が優先され、その後に共通の `public/assets/` を探します。
+
 ## よく使うAPI
 
 ```csharp
@@ -137,11 +146,16 @@ Time.frameCount
 Random.Range(min, max)
 Random.Chance(rate)
 
+sound.Play(name)
+sound.Play(name, volume)
+
 Math.Round(value, digits)
 Math.Fixed(value, digits)
 Math.Floor(value)
 Math.Ceil(value)
 ```
+
+小数リテラルはC# / Unityに寄せて `1.0f` や `0.25f` のように末尾に `f` を付けます。`float speed = 5;` のように整数を `float` に入れることはできます。
 
 ## データ
 

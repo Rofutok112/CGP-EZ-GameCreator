@@ -7,6 +7,7 @@ class MockHost implements RuntimeHost {
   height = 360;
   entities: RuntimeEntity[] = [];
   resetRequested = false;
+  playedSounds: { name: string; volume?: number }[] = [];
   private id = 1;
 
   createBox(x: number, y: number, width: number, height: number): RuntimeEntity {
@@ -37,7 +38,9 @@ class MockHost implements RuntimeHost {
     return false;
   }
 
-  playSound(): void {}
+  playSound(name: string, volume?: number): void {
+    this.playedSounds.push({ name, volume });
+  }
 
   follow(): void {}
 
@@ -333,5 +336,60 @@ describe("DSL", () => {
     const instance = compiled.createInstance(host);
     instance.start();
     expect(host.entities[0]).toMatchObject({ shape: "sprite", imageName: "hero", width: 48, height: 32, flipX: true });
+  });
+
+  it("plays sounds with optional volume", () => {
+    const code = `class Main
+{
+    void Start()
+    {
+        sound.Play("coin");
+        sound.Play("jump", 0.25f);
+    }
+
+    void Update()
+    {
+    }
+}`;
+    const compiled = compileDsl(code);
+    expect(compiled.diagnostics).toEqual([]);
+    const host = new MockHost();
+    const instance = compiled.createInstance(host);
+    instance.start();
+    expect(host.playedSounds).toEqual([
+      { name: "coin", volume: undefined },
+      { name: "jump", volume: 0.25 }
+    ]);
+  });
+
+  it("requires f suffix for decimal float literals", () => {
+    const diagnostics = analyzeDsl(`class Main
+{
+    float value = 1.0;
+
+    void Start()
+    {
+        sound.Play("jump", 0.5);
+    }
+
+    void Update()
+    {
+    }
+}`);
+
+    expect(diagnostics.filter((item) => item.message.includes("末尾に f")).length).toBe(2);
+    expect(compileDsl(`class Main
+{
+    float value = 1.0f;
+
+    void Start()
+    {
+        sound.Play("jump", 0.5f);
+    }
+
+    void Update()
+    {
+    }
+}`).diagnostics).toEqual([]);
   });
 });

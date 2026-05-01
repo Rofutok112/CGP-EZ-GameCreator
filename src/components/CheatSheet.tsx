@@ -76,13 +76,13 @@ const groups = [
       { name: "Time.deltaTime", description: "前フレームからの秒数" },
       { name: "Time.frameCount", description: "現在のフレーム数" },
       { name: "Random.Range(min, max)", description: "範囲内の乱数" },
-      { name: "Random.Chance(rate)", description: "指定確率でtrue" }
+      { name: "Random.Chance(rate)", description: "指定確率でtrue。小数は 0.01f のように書く" }
     ]
   },
   {
     title: "Math",
     items: [
-      { name: "2f", description: "Unity/C#風のfloatリテラル。2 と同じ値だが float として扱う" },
+      { name: "1.0f / 0.25f", description: "Unity/C#風のfloatリテラル。小数を書くときは末尾に f が必要" },
       { name: "Math.Round(value, digits)", description: "数値を指定した小数桁に丸める" },
       { name: "Math.Fixed(value, digits)", description: "指定した小数桁で表示する文字列にする" },
       { name: "value.ToString(\"F2\")", description: "C#風に小数2桁の文字列へ変換する" },
@@ -94,7 +94,7 @@ const groups = [
     title: "ゲーム",
     items: [
       { name: "game.Reset()", description: "ゲームを最初からやり直す" },
-      { name: "sound.Play(name)", description: "効果音を鳴らす" },
+      { name: "sound.Play(name, volume)", description: "assets内の音声を鳴らす。volumeは0fから1f。例: sound.Play(\"jump\", 0.5f)" },
       { name: "camera.Follow(obj)", description: "カメラが物体を追う" }
     ]
   }

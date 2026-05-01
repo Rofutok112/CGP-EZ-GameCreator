@@ -71,7 +71,7 @@ label.color = "black";`
   },
   {
     title: "乱数で出す",
-    code: `if (Random.Chance(0.01))
+    code: `if (Random.Chance(0.01f))
 {
     GameObject enemy = Create.Box(620, Random.Range(80, 230), 28, 28);
     enemies.Add(enemy);
