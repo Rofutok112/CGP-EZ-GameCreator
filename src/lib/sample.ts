@@ -2,10 +2,12 @@ export const sampleCode = `class Main
 {
     void Start()
     {
+        
     }
 
     void Update()
     {
+        
     }
 }`;
 
@@ -16,10 +18,12 @@ export const snippets = [
 {
     void Start()
     {
+        
     }
 
     void Update()
     {
+        
     }
 }`
   },

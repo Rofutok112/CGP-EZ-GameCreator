@@ -424,6 +424,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, {
   value: string;
   diagnostics: DslDiagnostic[];
   readOnly?: boolean;
+  onCursorChange?(position: { line: number; column: number }): void;
   onChange(value: string): void;
   onRun(): void;
   onSave(): void;
@@ -431,6 +432,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, {
   value,
   diagnostics,
   readOnly = false,
+  onCursorChange,
   onChange,
   onRun,
   onSave
@@ -439,6 +441,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, {
   const viewRef = useRef<EditorView | null>(null);
   const diagnosticsRef = useRef(diagnostics);
   const onChangeRef = useRef(onChange);
+  const onCursorChangeRef = useRef(onCursorChange);
   const onRunRef = useRef(onRun);
   const onSaveRef = useRef(onSave);
 
@@ -450,9 +453,10 @@ export const CodeEditor = forwardRef<CodeEditorHandle, {
 
   useEffect(() => {
     onChangeRef.current = onChange;
+    onCursorChangeRef.current = onCursorChange;
     onRunRef.current = onRun;
     onSaveRef.current = onSave;
-  }, [onChange, onRun, onSave]);
+  }, [onChange, onCursorChange, onRun, onSave]);
 
   useImperativeHandle(ref, () => ({
     focusAt(line: number, column: number) {
@@ -496,6 +500,11 @@ export const CodeEditor = forwardRef<CodeEditorHandle, {
         ]),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) onChangeRef.current(update.state.doc.toString());
+          if (update.docChanged || update.selectionSet) {
+            const line = update.state.doc.lineAt(update.state.selection.main.head);
+            onCursorChangeRef.current?.({ line: line.number, column: update.state.selection.main.head - line.from + 1 });
+            keepCursorVisible(update.view);
+          }
         }),
         EditorView.theme({
           "&": { height: "100%", backgroundColor: "#1e1e1e", color: "#d4d4d4", fontFamily: "Consolas, 'Cascadia Code', 'Courier New', monospace" },
@@ -546,6 +555,14 @@ export const CodeEditor = forwardRef<CodeEditorHandle, {
 
   return <div ref={hostRef} className="editor-host" />;
 });
+
+function keepCursorVisible(view: EditorView) {
+  window.requestAnimationFrame(() => {
+    view.dispatch({
+      effects: EditorView.scrollIntoView(view.state.selection.main.head, { y: "nearest", yMargin: 72 })
+    });
+  });
+}
 
 const disabledEditorTheme = EditorView.theme({
   "&": { filter: "brightness(0.68)", cursor: "not-allowed" },

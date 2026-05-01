@@ -1,8 +1,9 @@
 "use client";
 
-import { ChevronDown, ChevronRight, FileAudio, FileImage, Folder, FolderPlus, RefreshCw, Trash2, Upload, X } from "lucide-react";
+import { ChevronDown, ChevronRight, FileAudio, FileImage, Folder, FolderPlus, Pencil, RefreshCw, Trash2, Upload, X } from "lucide-react";
 import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
+import { ConfirmDialog, TextInputDialog } from "@/components/AppDialog";
 
 type AssetFile = {
   fileName: string;
@@ -33,6 +34,11 @@ type TreeStyle = CSSProperties & {
   "--tree-depth"?: number;
 };
 
+type AssetDialog =
+  | { kind: "none" }
+  | { kind: "input"; title: string; label: string; message?: string; initialValue?: string; confirmLabel?: string; onConfirm(value: string): void }
+  | { kind: "confirm"; title: string; message: string; confirmLabel: string; danger?: boolean; onConfirm(): void };
+
 export function AssetBrowser({ open, onClose, scope = "", scopeLabel = "共有" }: { open: boolean; onClose(): void; scope?: string; scopeLabel?: string }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const assetBodyRef = useRef<HTMLDivElement | null>(null);
@@ -48,6 +54,7 @@ export function AssetBrowser({ open, onClose, scope = "", scopeLabel = "共有" 
   const [resizingTree, setResizingTree] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [dialog, setDialog] = useState<AssetDialog>({ kind: "none" });
 
   const load = async () => {
     setLoading(true);
@@ -165,12 +172,20 @@ export function AssetBrowser({ open, onClose, scope = "", scopeLabel = "共有" 
   };
 
   const promptFolder = (parentFolder: string) => {
-    const name = window.prompt("新しいフォルダ名");
-    if (name) void createFolder(parentFolder, name);
+    setContextMenu(null);
+    setDialog({
+      kind: "input",
+      title: "新しいフォルダ",
+      label: "フォルダ名",
+      confirmLabel: "作成",
+      onConfirm: (name) => {
+        setDialog({ kind: "none" });
+        void createFolder(parentFolder, name);
+      }
+    });
   };
 
   const remove = async (file: AssetFile) => {
-    if (!window.confirm(`${file.fileName} を削除しますか？`)) return;
     setLoading(true);
     setError("");
     try {
@@ -195,9 +210,23 @@ export function AssetBrowser({ open, onClose, scope = "", scopeLabel = "共有" 
     }
   };
 
+  const confirmRemove = (file: AssetFile) => {
+    setContextMenu(null);
+    setDialog({
+      kind: "confirm",
+      title: "素材を削除",
+      message: `assets/${file.path} を削除します。この操作は元に戻せません。`,
+      confirmLabel: "削除",
+      danger: true,
+      onConfirm: () => {
+        setDialog({ kind: "none" });
+        void remove(file);
+      }
+    });
+  };
+
   const removeFolder = async (folder: string) => {
     if (!folder) return;
-    if (!window.confirm(`assets/${folder}/ を中身ごと削除しますか？`)) return;
     setLoading(true);
     setError("");
     setContextMenu(null);
@@ -220,6 +249,107 @@ export function AssetBrowser({ open, onClose, scope = "", scopeLabel = "共有" 
       await load();
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : "フォルダを削除できませんでした。");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const confirmRemoveFolder = (folder: string) => {
+    setContextMenu(null);
+    setDialog({
+      kind: "confirm",
+      title: "フォルダを削除",
+      message: `assets/${folder}/ を中身ごと削除します。この操作は元に戻せません。`,
+      confirmLabel: "削除",
+      danger: true,
+      onConfirm: () => {
+        setDialog({ kind: "none" });
+        void removeFolder(folder);
+      }
+    });
+  };
+
+  const renameFile = async (file: AssetFile) => {
+    setContextMenu(null);
+    setDialog({
+      kind: "input",
+      title: "ファイル名を変更",
+      label: "ファイル名",
+      initialValue: file.fileName,
+      confirmLabel: "変更",
+      onConfirm: (nextName) => {
+        setDialog({ kind: "none" });
+        if (nextName !== file.fileName) void submitRenameFile(file, nextName);
+      }
+    });
+  };
+
+  const submitRenameFile = async (file: AssetFile, nextName: string) => {
+    setLoading(true);
+    setError("");
+    setContextMenu(null);
+    try {
+      const response = await fetch(`/api/assets/rename?${assetParams({ scope, t: String(Date.now()) })}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file: file.path, name: nextName }),
+        cache: "no-store"
+      });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error || "rename failed");
+      }
+      const renamed = (await response.json()) as AssetFile;
+      setSelectedFile(renamed.path ? renamed : null);
+      setCurrentFolder(renamed.folder ?? file.folder);
+      await load();
+    } catch (renameError) {
+      setError(renameError instanceof Error ? renameError.message : "ファイル名を変更できませんでした。");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renameFolder = async (folder: string) => {
+    if (!folder) return;
+    const oldName = folder.split("/").filter(Boolean).at(-1) ?? folder;
+    setContextMenu(null);
+    setDialog({
+      kind: "input",
+      title: "フォルダ名を変更",
+      label: "フォルダ名",
+      initialValue: oldName,
+      confirmLabel: "変更",
+      onConfirm: (nextName) => {
+        setDialog({ kind: "none" });
+        if (nextName !== oldName) void submitRenameFolder(folder, nextName);
+      }
+    });
+  };
+
+  const submitRenameFolder = async (folder: string, nextName: string) => {
+    setLoading(true);
+    setError("");
+    setContextMenu(null);
+    try {
+      const response = await fetch(`/api/assets/rename?${assetParams({ scope, t: String(Date.now()) })}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folder, name: nextName }),
+        cache: "no-store"
+      });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error || "rename folder failed");
+      }
+      const data = (await response.json()) as { folder: string; oldFolder?: string };
+      const renamedFolder = data.folder;
+      setCurrentFolder((current) => replacePathPrefix(current, folder, renamedFolder));
+      setSelectedFile((selected) => (selected && isPathInside(selected.path, folder) ? null : selected));
+      setExpandedFolders((current) => new Set([...current].map((item) => replacePathPrefix(item, folder, renamedFolder))));
+      await load();
+    } catch (renameError) {
+      setError(renameError instanceof Error ? renameError.message : "フォルダ名を変更できませんでした。");
     } finally {
       setLoading(false);
     }
@@ -415,7 +545,10 @@ export function AssetBrowser({ open, onClose, scope = "", scopeLabel = "共有" 
             {contextMenu.file ? (
               <>
                 <div className="asset-context-separator" />
-                <button className="danger" onClick={() => remove(contextMenu.file!)} disabled={loading}>
+                <button onClick={() => renameFile(contextMenu.file!)} disabled={loading}>
+                  <Pencil size={15} /> 名前を変更
+                </button>
+                <button className="danger" onClick={() => confirmRemove(contextMenu.file!)} disabled={loading}>
                   <Trash2 size={15} /> 削除
                 </button>
               </>
@@ -423,12 +556,38 @@ export function AssetBrowser({ open, onClose, scope = "", scopeLabel = "共有" 
             {!contextMenu.file && contextMenu.folder ? (
               <>
                 <div className="asset-context-separator" />
-                <button className="danger" onClick={() => removeFolder(contextMenu.folder)} disabled={loading}>
+                <button onClick={() => renameFolder(contextMenu.folder)} disabled={loading}>
+                  <Pencil size={15} /> 名前を変更
+                </button>
+                <button className="danger" onClick={() => confirmRemoveFolder(contextMenu.folder)} disabled={loading}>
                   <Trash2 size={15} /> フォルダを削除
                 </button>
               </>
             ) : null}
           </div>
+        ) : null}
+        {dialog.kind === "confirm" ? (
+          <ConfirmDialog
+            open
+            title={dialog.title}
+            message={dialog.message}
+            confirmLabel={dialog.confirmLabel}
+            danger={dialog.danger}
+            onConfirm={dialog.onConfirm}
+            onCancel={() => setDialog({ kind: "none" })}
+          />
+        ) : null}
+        {dialog.kind === "input" ? (
+          <TextInputDialog
+            open
+            title={dialog.title}
+            message={dialog.message}
+            label={dialog.label}
+            initialValue={dialog.initialValue}
+            confirmLabel={dialog.confirmLabel}
+            onConfirm={dialog.onConfirm}
+            onCancel={() => setDialog({ kind: "none" })}
+          />
         ) : null}
       </section>
     </div>
@@ -453,6 +612,13 @@ function parentFolder(folder: string) {
 
 function isPathInside(path: string, folder: string) {
   return path === folder || path.startsWith(`${folder}/`);
+}
+
+function replacePathPrefix(path: string, oldPrefix: string, newPrefix: string) {
+  if (!oldPrefix) return path;
+  if (path === oldPrefix) return newPrefix;
+  if (path.startsWith(`${oldPrefix}/`)) return `${newPrefix}/${path.slice(oldPrefix.length + 1)}`;
+  return path;
 }
 
 function treeStyle(depth: number): TreeStyle {

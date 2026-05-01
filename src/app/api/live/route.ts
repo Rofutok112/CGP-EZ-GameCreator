@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, lt } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, lt } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { liveSessions } from "@/db/schema";
@@ -12,11 +12,14 @@ export async function GET(request: Request) {
   const authError = requireTeacherToken(request);
   if (authError) return authError;
   const classroomId = classroomFromRequest(request);
+  const url = new URL(request.url);
+  const activeWithinSeconds = Math.max(1, Number(url.searchParams.get("activeWithinSeconds") ?? "15"));
+  const activeSince = new Date(Date.now() - activeWithinSeconds * 1000);
   const rows = getDb()
     .select()
     .from(liveSessions)
-    .where(and(eq(liveSessions.classroomId, classroomId), isNull(liveSessions.archivedAt)))
-    .orderBy(desc(liveSessions.updatedAt))
+    .where(and(eq(liveSessions.classroomId, classroomId), isNull(liveSessions.archivedAt), gt(liveSessions.updatedAt, activeSince)))
+    .orderBy(asc(liveSessions.createdAt))
     .all();
   return jsonNoStore(rows);
 }
@@ -29,6 +32,8 @@ export async function POST(request: Request) {
     title?: string;
     code?: string;
     revision?: number;
+    cursorLine?: number;
+    cursorColumn?: number;
     clientUpdatedAt?: string;
   };
 
@@ -59,6 +64,8 @@ export async function POST(request: Request) {
     title: body.title?.trim() || "無題のゲーム",
     code: body.code,
     revision,
+    cursorLine: positiveInteger(body.cursorLine, 1),
+    cursorColumn: positiveInteger(body.cursorColumn, 1),
     clientUpdatedAt,
     archivedAt: null,
     updatedAt: now
@@ -95,6 +102,12 @@ export async function DELETE(request: Request) {
       : eq(liveSessions.classroomId, classroomId);
   const rows = getDb().update(liveSessions).set({ archivedAt: now }).where(where).returning().all();
   return jsonNoStore({ archived: rows.length });
+}
+
+function positiveInteger(value: unknown, fallback: number) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue) || numberValue < 1) return fallback;
+  return Math.floor(numberValue);
 }
 
 function jsonNoStore(body: unknown, init?: ResponseInit) {

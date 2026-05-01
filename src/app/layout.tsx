@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "CGP EZ GameCreator",
-  description: "C#風DSLでゲームを作る新歓向けエディタ"
+  description: "CGP EZ GameCreator"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

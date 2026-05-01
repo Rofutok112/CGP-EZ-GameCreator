@@ -417,6 +417,85 @@ canvas {
   background: rgba(15, 23, 42, 0.32);
 }
 
+.app-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.38);
+}
+
+.app-dialog {
+  width: min(440px, 100%);
+  display: grid;
+  gap: var(--panel-gap);
+  padding: var(--panel-pad);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.24);
+}
+
+.app-dialog-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.app-dialog-header h2 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.app-dialog-header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.app-dialog-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #eef6f5;
+  color: var(--accent-strong);
+}
+
+.app-dialog-icon.danger {
+  background: #fff1f0;
+  color: var(--danger);
+}
+
+.icon-button {
+  width: 32px;
+  min-height: 32px;
+  padding: 0;
+}
+
+.app-dialog-field {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.app-dialog-field input {
+  width: 100%;
+}
+
+.app-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .docs-dialog {
   width: min(920px, 100%);
   height: min(640px, calc(100dvh - 48px));
@@ -1057,6 +1136,28 @@ canvas {
 
 .code-line {
   display: inline;
+}
+
+.readonly-code .code-line,
+.live-code-preview .code-line {
+  display: block;
+  min-height: 1.55em;
+}
+
+.active-cursor-line {
+  background: transparent;
+  outline: 0;
+}
+
+.teacher-cursor-marker {
+  display: inline-block;
+  width: 1px;
+  height: 1.45em;
+  margin: 0;
+  vertical-align: -0.33em;
+  background: #ffffff;
+  transform: scaleX(0.75);
+  transform-origin: center;
 }
 
 .code-keyword,

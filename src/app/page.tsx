@@ -4,11 +4,13 @@ import Link from "next/link";
 import { BookOpen, FolderOpen, Maximize2, Minimize2, Pause, Play, RotateCcw, Save, Square } from "lucide-react";
 import type { MutableRefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ConfirmDialog } from "@/components/AppDialog";
 import { AssetBrowser } from "@/components/AssetBrowser";
 import { CheatSheet } from "@/components/CheatSheet";
 import { CodeEditor, type CodeEditorHandle } from "@/components/CodeEditor";
 import { DiagnosticsPanel } from "@/components/DiagnosticsPanel";
 import { GameCanvas } from "@/components/GameCanvas";
+import { getBrowserStorage } from "@/lib/browserStorage";
 import { analyzeDsl, type DslDiagnostic } from "@/lib/dsl";
 import { sampleCode } from "@/lib/sample";
 
@@ -22,6 +24,7 @@ export default function Home() {
   const [sessionId, setSessionId] = useState(0);
   const [staticDiagnostics, setStaticDiagnostics] = useState<DslDiagnostic[]>([]);
   const [runtimeDiagnostics, setRuntimeDiagnostics] = useState<DslDiagnostic[]>([]);
+  const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
   const [clientId, setClientId] = useState("");
   const [classroomId, setClassroomId] = useState("default");
   const [studentName, setStudentName] = useState("");
@@ -36,31 +39,33 @@ export default function Home() {
   const [previewMaximized, setPreviewMaximized] = useState(false);
   const [docsOpen, setDocsOpen] = useState(false);
   const [assetsOpen, setAssetsOpen] = useState(false);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const revisionRef = useRef(0);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("cgp-ez-code");
+    const storage = getBrowserStorage();
+    const saved = storage.getItem("cgp-ez-code");
     if (saved) {
       setCode(saved);
       setPreviewCode(saved);
     }
-    const savedAtText = window.localStorage.getItem("cgp-ez-saved-at");
+    const savedAtText = storage.getItem("cgp-ez-saved-at");
     if (savedAtText) setSavedAt(new Date(savedAtText));
-    let id = window.localStorage.getItem("cgp-ez-client-id");
+    let id = storage.getItem("cgp-ez-client-id");
     if (!id) {
-      id = crypto.randomUUID();
-      window.localStorage.setItem("cgp-ez-client-id", id);
+      id = createClientId();
+      storage.setItem("cgp-ez-client-id", id);
     }
     setClientId(id);
-    setClassroomId(window.localStorage.getItem("cgp-ez-classroom-id") || "default");
-    setStudentName(window.localStorage.getItem("cgp-ez-student-name") || "");
-    setTitle(window.localStorage.getItem("cgp-ez-title") || "左右移動ゲーム");
-    const savedRevision = Number(window.localStorage.getItem("cgp-ez-revision"));
+    setClassroomId(storage.getItem("cgp-ez-classroom-id") || "default");
+    setStudentName(storage.getItem("cgp-ez-student-name") || "");
+    setTitle(storage.getItem("cgp-ez-title") || "左右移動ゲーム");
+    const savedRevision = Number(storage.getItem("cgp-ez-revision"));
     revisionRef.current = Number.isFinite(savedRevision) ? Math.max(savedRevision, Date.now()) : Date.now();
-    window.localStorage.setItem("cgp-ez-revision", String(revisionRef.current));
-    const savedSplit = Number(window.localStorage.getItem("cgp-ez-split-ratio"));
+    storage.setItem("cgp-ez-revision", String(revisionRef.current));
+    const savedSplit = Number(storage.getItem("cgp-ez-split-ratio"));
     if (Number.isFinite(savedSplit) && savedSplit >= 0.32 && savedSplit <= 0.76) setSplitRatio(savedSplit);
-    const savedDiagnosticsRatio = Number(window.localStorage.getItem("cgp-ez-diagnostics-ratio"));
+    const savedDiagnosticsRatio = Number(storage.getItem("cgp-ez-diagnostics-ratio"));
     if (Number.isFinite(savedDiagnosticsRatio) && savedDiagnosticsRatio >= 0.14 && savedDiagnosticsRatio <= 0.42) setDiagnosticsRatio(savedDiagnosticsRatio);
   }, []);
 
@@ -91,7 +96,7 @@ export default function Home() {
         const response = await fetch("/api/live", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clientId, classroomId, studentName, title, code, revision, clientUpdatedAt })
+          body: JSON.stringify({ clientId, classroomId, studentName, title, code, revision, cursorLine: cursorPosition.line, cursorColumn: cursorPosition.column, clientUpdatedAt })
         });
         if (!response.ok) {
           setSyncState("error");
@@ -105,16 +110,49 @@ export default function Home() {
         }
         if (Number.isFinite(data.revision)) {
           revisionRef.current = Math.max(revisionRef.current, Number(data.revision));
-          window.localStorage.setItem("cgp-ez-revision", String(revisionRef.current));
+          getBrowserStorage().setItem("cgp-ez-revision", String(revisionRef.current));
         }
         setLastSyncedAt(new Date());
         setSyncState("synced");
       } catch {
         setSyncState("error");
       }
-    }, 700);
+    }, 250);
     return () => window.clearTimeout(timer);
-  }, [clientId, classroomId, studentName, title, code]);
+  }, [clientId, classroomId, studentName, title, code, cursorPosition]);
+
+  useEffect(() => {
+    if (!clientId) return;
+    const sendHeartbeat = async () => {
+      try {
+        const response = await fetch("/api/live", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientId,
+            classroomId,
+            studentName,
+            title,
+            code,
+            revision: revisionRef.current,
+            cursorLine: cursorPosition.line,
+            cursorColumn: cursorPosition.column,
+            clientUpdatedAt: new Date().toISOString()
+          })
+        });
+        if (response.ok) {
+          setLastSyncedAt(new Date());
+          setSyncState("synced");
+        } else {
+          setSyncState("error");
+        }
+      } catch {
+        setSyncState("error");
+      }
+    };
+    const timer = window.setInterval(sendHeartbeat, 5000);
+    return () => window.clearInterval(timer);
+  }, [clientId, classroomId, studentName, title, code, cursorPosition]);
 
   const start = useCallback(() => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -156,28 +194,38 @@ export default function Home() {
   const updateClassroomId = useCallback((nextClassroomId: string) => {
     const normalized = nextClassroomId.trim() || "default";
     bumpRevision(revisionRef);
-    window.localStorage.setItem("cgp-ez-classroom-id", normalized);
+    getBrowserStorage().setItem("cgp-ez-classroom-id", normalized);
     setClassroomId(normalized);
   }, []);
 
   const updateStudentName = useCallback((nextStudentName: string) => {
     bumpRevision(revisionRef);
-    window.localStorage.setItem("cgp-ez-student-name", nextStudentName);
+    getBrowserStorage().setItem("cgp-ez-student-name", nextStudentName);
     setStudentName(nextStudentName);
   }, []);
 
   const updateTitle = useCallback((nextTitle: string) => {
     bumpRevision(revisionRef);
-    window.localStorage.setItem("cgp-ez-title", nextTitle);
+    getBrowserStorage().setItem("cgp-ez-title", nextTitle);
     setTitle(nextTitle);
   }, []);
 
   const resetCode = useCallback(() => {
-    if (code !== sampleCode && !window.confirm("現在のコードを空のStart/Updateにリセットしますか？")) return;
+    if (code !== sampleCode) {
+      setResetDialogOpen(true);
+      return;
+    }
     updateCode(sampleCode);
     setPreviewState("stopped");
     setMessage("初期状態にリセットしました。");
   }, [code, updateCode]);
+
+  const confirmResetCode = useCallback(() => {
+    setResetDialogOpen(false);
+    updateCode(sampleCode);
+    setPreviewState("stopped");
+    setMessage("初期状態にリセットしました。");
+  }, [updateCode]);
 
   const startResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const workspace = workspaceRef.current;
@@ -194,7 +242,7 @@ export default function Home() {
     const handleUp = (upEvent: PointerEvent) => {
       const raw = startRatio + (upEvent.clientX - startX) / rect.width;
       const next = Math.min(0.76, Math.max(0.32, raw));
-      window.localStorage.setItem("cgp-ez-split-ratio", String(next));
+      getBrowserStorage().setItem("cgp-ez-split-ratio", String(next));
       document.body.classList.remove("is-resizing");
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
@@ -217,7 +265,7 @@ export default function Home() {
     };
     const handleUp = (upEvent: PointerEvent) => {
       const next = Math.min(0.42, Math.max(0.14, startRatio - (upEvent.clientY - startY) / rect.height));
-      window.localStorage.setItem("cgp-ez-diagnostics-ratio", String(next));
+      getBrowserStorage().setItem("cgp-ez-diagnostics-ratio", String(next));
       document.body.classList.remove("is-row-resizing");
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
@@ -235,7 +283,6 @@ export default function Home() {
       <header className="topbar">
         <div className="brand">
           <h1>CGP EZ GameCreator</h1>
-          <span>C#風DSLでゲームを作るLAN内エディタ</span>
         </div>
         <div className="toolbar-group">
           <Link href="/teacher">先生画面</Link>
@@ -280,7 +327,7 @@ export default function Home() {
               {hasErrors ? "エラーあり" : "実行できます"} / {saveState === "dirty" ? "未保存" : saveState === "saving" ? "保存中" : `保存済み${savedAt ? ` ${savedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}` : ""}`}
             </div>
           </div>
-          <CodeEditor ref={editorRef} value={code} diagnostics={diagnostics} readOnly={previewState !== "stopped"} onChange={updateCode} onRun={start} onSave={save} />
+          <CodeEditor ref={editorRef} value={code} diagnostics={diagnostics} readOnly={previewState !== "stopped"} onChange={updateCode} onCursorChange={setCursorPosition} onRun={start} onSave={save} />
           <div className="row-splitter" role="separator" aria-orientation="horizontal" aria-label="エディタと問題パネルの高さを変更" onPointerDown={startDiagnosticsResize} />
           <DiagnosticsPanel diagnostics={diagnostics} onSelect={(item) => editorRef.current?.focusAt(item.line, item.column)} />
         </section>
@@ -318,6 +365,15 @@ export default function Home() {
       </div>
       <CheatSheet open={docsOpen} onClose={() => setDocsOpen(false)} />
       <AssetBrowser open={assetsOpen} onClose={() => setAssetsOpen(false)} scope={clientId} scopeLabel={studentName || "自分のフォルダ"} />
+      <ConfirmDialog
+        open={resetDialogOpen}
+        title="コードをリセット"
+        message="現在のコードを空のStart/Updateに戻します。この操作は元に戻せません。"
+        confirmLabel="リセット"
+        danger
+        onConfirm={confirmResetCode}
+        onCancel={() => setResetDialogOpen(false)}
+      />
     </main>
   );
 }
@@ -330,13 +386,30 @@ function syncLabel(state: "idle" | "syncing" | "synced" | "error") {
 }
 
 function persistCode(code: string) {
-  window.localStorage.setItem("cgp-ez-code", code);
-  window.localStorage.setItem("cgp-ez-saved-at", new Date().toISOString());
+  const storage = getBrowserStorage();
+  storage.setItem("cgp-ez-code", code);
+  storage.setItem("cgp-ez-saved-at", new Date().toISOString());
 }
 
 function bumpRevision(revisionRef: MutableRefObject<number>) {
   revisionRef.current = Math.max(revisionRef.current + 1, Date.now());
-  window.localStorage.setItem("cgp-ez-revision", String(revisionRef.current));
+  getBrowserStorage().setItem("cgp-ez-revision", String(revisionRef.current));
+}
+
+function createClientId() {
+  const randomUUID = globalThis.crypto?.randomUUID?.bind(globalThis.crypto);
+  if (randomUUID) return randomUUID();
+
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
 }
 
 function mergeDiagnostics(a: DslDiagnostic[], b: DslDiagnostic[]) {

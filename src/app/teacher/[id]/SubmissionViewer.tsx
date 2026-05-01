@@ -9,6 +9,7 @@ import { GameCanvas } from "@/components/GameCanvas";
 import { CodePreview } from "@/components/CodePreview";
 import { analyzeDsl, type DslDiagnostic } from "@/lib/dsl";
 import type { LiveSession } from "@/db/schema";
+import { getBrowserStorage } from "@/lib/browserStorage";
 
 export function SubmissionViewer({ clientId }: { clientId: string }) {
   const workspaceRef = useRef<HTMLDivElement | null>(null);
@@ -27,16 +28,21 @@ export function SubmissionViewer({ clientId }: { clientId: string }) {
   const [assetsOpen, setAssetsOpen] = useState(false);
 
   useEffect(() => {
-    setTeacherToken(window.localStorage.getItem("cgp-ez-teacher-token") || "teacher");
-    const savedSplit = Number(window.localStorage.getItem("cgp-ez-teacher-split-ratio"));
+    const storage = getBrowserStorage();
+    setTeacherToken(storage.getItem("cgp-ez-teacher-token") || "teacher");
+    const savedSplit = Number(storage.getItem("cgp-ez-teacher-split-ratio"));
     if (Number.isFinite(savedSplit) && savedSplit >= 0.32 && savedSplit <= 0.76) setSplitRatio(savedSplit);
-    const savedDiagnosticsRatio = Number(window.localStorage.getItem("cgp-ez-teacher-diagnostics-ratio"));
+    const savedDiagnosticsRatio = Number(storage.getItem("cgp-ez-teacher-diagnostics-ratio"));
     if (Number.isFinite(savedDiagnosticsRatio) && savedDiagnosticsRatio >= 0.14 && savedDiagnosticsRatio <= 0.42) setDiagnosticsRatio(savedDiagnosticsRatio);
   }, []);
 
   useEffect(() => {
     let active = true;
+    let loading = false;
+    let lastRevision: number | null = null;
     const load = async () => {
+      if (loading) return;
+      loading = true;
       try {
         const params = new URLSearchParams({ token: teacherToken, t: String(Date.now()) });
         const response = await fetch(`/api/live/${clientId}?${params}`, { cache: "no-store" });
@@ -44,16 +50,21 @@ export function SubmissionViewer({ clientId }: { clientId: string }) {
         const next = (await response.json()) as LiveSession;
         if (active) {
           setSession(next);
-          setStaticDiagnostics(analyzeDsl(next.code));
-          setRuntimeDiagnostics([]);
+          if (lastRevision !== next.revision) {
+            lastRevision = next.revision;
+            setStaticDiagnostics(analyzeDsl(next.code));
+            setRuntimeDiagnostics([]);
+          }
           setError("");
         }
       } catch {
         if (active) setError("この生徒のリアルタイム共有を取得できませんでした。");
+      } finally {
+        loading = false;
       }
     };
     load();
-    const timer = window.setInterval(load, 1500);
+    const timer = window.setInterval(load, 400);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -93,7 +104,7 @@ export function SubmissionViewer({ clientId }: { clientId: string }) {
     const handleUp = (upEvent: PointerEvent) => {
       const raw = startRatio + (upEvent.clientX - startX) / rect.width;
       const next = Math.min(0.76, Math.max(0.32, raw));
-      window.localStorage.setItem("cgp-ez-teacher-split-ratio", String(next));
+      getBrowserStorage().setItem("cgp-ez-teacher-split-ratio", String(next));
       document.body.classList.remove("is-resizing");
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
@@ -118,7 +129,7 @@ export function SubmissionViewer({ clientId }: { clientId: string }) {
     };
     const handleUp = (upEvent: PointerEvent) => {
       const next = Math.min(0.42, Math.max(0.14, startRatio - (upEvent.clientY - startY) / rect.height));
-      window.localStorage.setItem("cgp-ez-teacher-diagnostics-ratio", String(next));
+      getBrowserStorage().setItem("cgp-ez-teacher-diagnostics-ratio", String(next));
       document.body.classList.remove("is-row-resizing");
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
@@ -169,7 +180,7 @@ export function SubmissionViewer({ clientId }: { clientId: string }) {
             </button>
           </div>
         </div>
-        <CodePreview code={code} className="readonly-code" />
+        <CodePreview code={code} className="readonly-code" cursorLine={session?.cursorLine} cursorColumn={session?.cursorColumn} />
         <div className="row-splitter" role="separator" aria-orientation="horizontal" aria-label="コードと問題パネルの高さを変更" onPointerDown={startDiagnosticsResize} />
         <DiagnosticsPanel diagnostics={diagnostics} />
       </section>

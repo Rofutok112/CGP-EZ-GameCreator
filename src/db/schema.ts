@@ -18,6 +18,8 @@ export const liveSessions = sqliteTable("live_sessions", {
   title: text("title").notNull(),
   code: text("code").notNull(),
   revision: integer("revision").notNull(),
+  cursorLine: integer("cursor_line").notNull(),
+  cursorColumn: integer("cursor_column").notNull(),
   clientUpdatedAt: integer("client_updated_at", { mode: "timestamp_ms" }).notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),

@@ -32,6 +32,8 @@ export function getDb() {
       title TEXT NOT NULL,
       code TEXT NOT NULL,
       revision INTEGER NOT NULL DEFAULT 0,
+      cursor_line INTEGER NOT NULL DEFAULT 1,
+      cursor_column INTEGER NOT NULL DEFAULT 1,
       client_updated_at INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
@@ -40,6 +42,8 @@ export function getDb() {
   `);
   ensureColumn(sqlite, "live_sessions", "classroom_id", "TEXT NOT NULL DEFAULT 'default'");
   ensureColumn(sqlite, "live_sessions", "revision", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(sqlite, "live_sessions", "cursor_line", "INTEGER NOT NULL DEFAULT 1");
+  ensureColumn(sqlite, "live_sessions", "cursor_column", "INTEGER NOT NULL DEFAULT 1");
   ensureColumn(sqlite, "live_sessions", "client_updated_at", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(sqlite, "live_sessions", "archived_at", "INTEGER");
 

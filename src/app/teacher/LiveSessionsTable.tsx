@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { ConfirmDialog } from "@/components/AppDialog";
 import { CodePreview } from "@/components/CodePreview";
 import type { LiveSession } from "@/db/schema";
+import { getBrowserStorage } from "@/lib/browserStorage";
 
 export function LiveSessionsTable() {
   const [rows, setRows] = useState<LiveSession[]>([]);
@@ -12,17 +14,22 @@ export function LiveSessionsTable() {
   const [query, setQuery] = useState("");
   const [classroomId, setClassroomId] = useState("default");
   const [teacherToken, setTeacherToken] = useState("teacher");
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
 
   useEffect(() => {
-    setClassroomId(window.localStorage.getItem("cgp-ez-teacher-classroom-id") || "default");
-    setTeacherToken(window.localStorage.getItem("cgp-ez-teacher-token") || "teacher");
+    const storage = getBrowserStorage();
+    setClassroomId(storage.getItem("cgp-ez-teacher-classroom-id") || "default");
+    setTeacherToken(storage.getItem("cgp-ez-teacher-token") || "teacher");
   }, []);
 
   useEffect(() => {
     let active = true;
+    let loading = false;
     const load = async () => {
+      if (loading) return;
+      loading = true;
       try {
-        const params = new URLSearchParams({ classroomId, token: teacherToken, t: String(Date.now()) });
+        const params = new URLSearchParams({ classroomId, token: teacherToken, activeWithinSeconds: "15", t: String(Date.now()) });
         const response = await fetch(`/api/live?${params}`, { cache: "no-store" });
         if (!response.ok) throw new Error("load failed");
         const nextRows = (await response.json()) as LiveSession[];
@@ -32,10 +39,12 @@ export function LiveSessionsTable() {
         }
       } catch {
         if (active) setError("リアルタイム一覧を取得できませんでした。");
+      } finally {
+        loading = false;
       }
     };
     load();
-    const timer = window.setInterval(load, 2000);
+    const timer = window.setInterval(load, 500);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -50,12 +59,12 @@ export function LiveSessionsTable() {
 
   const updateClassroomId = (value: string) => {
     const next = value.trim() || "default";
-    window.localStorage.setItem("cgp-ez-teacher-classroom-id", next);
+    getBrowserStorage().setItem("cgp-ez-teacher-classroom-id", next);
     setClassroomId(next);
   };
 
   const updateTeacherToken = (value: string) => {
-    window.localStorage.setItem("cgp-ez-teacher-token", value);
+    getBrowserStorage().setItem("cgp-ez-teacher-token", value);
     setTeacherToken(value);
   };
 
@@ -98,7 +107,7 @@ export function LiveSessionsTable() {
         <button onClick={() => archive(undefined, 30)}>
           <Trash2 size={16} /> 30分以上未更新を非表示
         </button>
-        <button className="state-stop-active" onClick={() => archive()}>
+        <button className="state-stop-active" onClick={() => setResetDialogOpen(true)}>
           <Trash2 size={16} /> 授業をリセット
         </button>
       </section>
@@ -119,7 +128,7 @@ export function LiveSessionsTable() {
                   </div>
                   <span className={`live-state ${online ? "online" : "offline"}`}>{online ? "同期中" : "未更新"}</span>
                 </header>
-                <CodePreview code={row.code} className="live-code-preview" />
+                <CodePreview code={row.code} className="live-code-preview" cursorLine={row.cursorLine} cursorColumn={row.cursorColumn} autoFollowCursor />
                 <footer className="live-card-footer">
                   <span>最終同期 {new Date(row.updatedAt).toLocaleTimeString("ja-JP")}</span>
                   <button onClick={() => archive(row.clientId)}>非表示</button>
@@ -130,6 +139,18 @@ export function LiveSessionsTable() {
           })
         : null}
       </div>
+      <ConfirmDialog
+        open={resetDialogOpen}
+        title="授業をリセット"
+        message={`授業ID「${classroomId}」の表示中セッションをすべて非表示にします。この操作は元に戻せません。`}
+        confirmLabel="リセット"
+        danger
+        onConfirm={() => {
+          setResetDialogOpen(false);
+          void archive();
+        }}
+        onCancel={() => setResetDialogOpen(false)}
+      />
     </div>
   );
 }
