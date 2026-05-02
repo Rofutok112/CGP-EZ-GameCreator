@@ -107,7 +107,7 @@ export default function Home() {
         const data = (await response.json()) as { ignored?: boolean; revision?: number };
         if (data.ignored) {
           setSyncState("error");
-          setMessage("同期が古い更新として無視されました。もう一度編集してください。");
+          setMessage("同期競合 / 再編集待ち");
           return;
         }
         if (Number.isFinite(data.revision)) {
@@ -183,7 +183,7 @@ export default function Home() {
     const now = new Date();
     setSavedAt(now);
     setSaveState("saved");
-    setMessage("ブラウザに保存しました。");
+    setMessage("保存完了");
   }, [code]);
 
   const updateCode = useCallback((nextCode: string) => {
@@ -220,14 +220,14 @@ export default function Home() {
     }
     updateCode(sampleCode);
     setPreviewState("stopped");
-    setMessage("初期状態にリセットしました。");
+    setMessage("リセット完了");
   }, [code, updateCode]);
 
   const confirmResetCode = useCallback(() => {
     setResetDialogOpen(false);
     updateCode(sampleCode);
     setPreviewState("stopped");
-    setMessage("初期状態にリセットしました。");
+    setMessage("リセット完了");
   }, [updateCode]);
 
   const startResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -286,7 +286,7 @@ export default function Home() {
       <header className="topbar">
         <div className="brand">
           <h1>CGP EZ GameCreator</h1>
-          {isStaticExport ? <span>静的体験版</span> : null}
+          {isStaticExport ? <span>Static Preview</span> : null}
         </div>
       </header>
 
@@ -327,7 +327,7 @@ export default function Home() {
               ) : null}
             </div>
             <div className={hasErrors ? "diagnostic-state error" : "ok"}>
-              {hasErrors ? "エラーあり" : "実行できます"} / {saveState === "dirty" ? "未保存" : saveState === "saving" ? "保存中" : `保存済み${savedAt ? ` ${savedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}` : ""}`}
+              {hasErrors ? "Error" : "実行可能"} / {saveState === "dirty" ? "未保存" : saveState === "saving" ? "保存中" : `保存済${savedAt ? ` ${savedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}` : ""}`}
             </div>
           </div>
           <CodeEditor ref={editorRef} value={code} diagnostics={diagnostics} readOnly={previewState !== "stopped"} onChange={updateCode} onCursorChange={setCursorPosition} onRun={start} onSave={save} />
@@ -356,12 +356,12 @@ export default function Home() {
           <GameCanvas code={previewCode} control={previewState} sessionId={sessionId} assetScope={clientId} onDiagnostics={setRuntimeDiagnostics} onStop={() => setPreviewState("stopped")} />
           {isStaticExport ? (
             <section className="submit-box">
-              <h2>静的体験版</h2>
-              <p className="ok">コードはこのブラウザに保存されます。先生画面、リアルタイム同期、ファイル追加はLAN版で使えます。</p>
+              <h2>Static Preview</h2>
+              <p className="ok">ローカル保存のみ。Live Sync / Files / Teacher はLAN版限定。</p>
             </section>
           ) : (
             <section className="submit-box">
-              <h2>リアルタイム共有</h2>
+              <h2>Live Sync</h2>
               <div className="submit-row">
                 <input value={classroomId} onChange={(event) => updateClassroomId(event.target.value)} placeholder="授業ID" />
                 <input value={studentName} onChange={(event) => updateStudentName(event.target.value)} placeholder="名前" />
@@ -377,8 +377,8 @@ export default function Home() {
       <AssetBrowser open={assetsOpen} onClose={() => setAssetsOpen(false)} scope={clientId} scopeLabel={studentName || "自分のフォルダ"} />
       <ConfirmDialog
         open={resetDialogOpen}
-        title="コードをリセット"
-        message="現在のコードを空のStart/Updateに戻します。この操作は元に戻せません。"
+        title="Reset Code"
+        message="現在のコードを初期状態へ戻す。取り消し不可。"
         confirmLabel="リセット"
         danger
         onConfirm={confirmResetCode}
@@ -390,7 +390,7 @@ export default function Home() {
 
 function syncLabel(state: "idle" | "syncing" | "synced" | "error") {
   if (state === "syncing") return "同期中";
-  if (state === "synced") return "同期済み";
+  if (state === "synced") return "同期済";
   if (state === "error") return "同期失敗";
   return "待機中";
 }

@@ -20,7 +20,7 @@ export function DiagnosticsPanel({ diagnostics, onSelect }: { diagnostics: DslDi
         </span>
       </div>
       {diagnostics.length === 0 ? (
-        <div className="ok">エラーはありません。Ctrl+Enterで実行できます。</div>
+        <div className="ok">No Issues / Ctrl+Enter</div>
       ) : (
         sorted.map((item, index) => (
           <button className={`diagnostic ${item.severity}`} key={`${item.line}-${item.column}-${index}`} onClick={() => onSelect?.(item)}>

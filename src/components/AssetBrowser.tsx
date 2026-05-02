@@ -68,7 +68,7 @@ export function AssetBrowser({ open, onClose, scope = "", scopeLabel = "共有" 
       setSelectedFile((selected) => (selected ? data.files.find((file) => file.path === selected.path) ?? null : null));
       setExpandedFolders((current) => new Set(["", ...current, ...data.folders]));
     } catch {
-      setError("ファイル一覧を取得できませんでした。");
+      setError("ファイル一覧の取得に失敗");
     } finally {
       setLoading(false);
     }
@@ -130,7 +130,7 @@ export function AssetBrowser({ open, onClose, scope = "", scopeLabel = "共有" 
       }
       await load();
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "ファイルを追加できませんでした。");
+      setError(uploadError instanceof Error ? uploadError.message : "ファイル追加に失敗");
     } finally {
       setLoading(false);
       if (inputRef.current) inputRef.current.value = "";
@@ -165,7 +165,7 @@ export function AssetBrowser({ open, onClose, scope = "", scopeLabel = "共有" 
       setNewFolderName("");
       await load();
     } catch (folderError) {
-      setError(folderError instanceof Error ? folderError.message : "フォルダを作成できませんでした。");
+      setError(folderError instanceof Error ? folderError.message : "フォルダ作成に失敗");
     } finally {
       setLoading(false);
     }
@@ -204,7 +204,7 @@ export function AssetBrowser({ open, onClose, scope = "", scopeLabel = "共有" 
       setContextMenu(null);
       await load();
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "ファイルを削除できませんでした。");
+      setError(deleteError instanceof Error ? deleteError.message : "ファイル削除に失敗");
     } finally {
       setLoading(false);
     }
@@ -215,7 +215,7 @@ export function AssetBrowser({ open, onClose, scope = "", scopeLabel = "共有" 
     setDialog({
       kind: "confirm",
       title: "素材を削除",
-      message: `assets/${file.path} を削除します。この操作は元に戻せません。`,
+      message: `assets/${file.path} を削除。取り消し不可。`,
       confirmLabel: "削除",
       danger: true,
       onConfirm: () => {
@@ -248,7 +248,7 @@ export function AssetBrowser({ open, onClose, scope = "", scopeLabel = "共有" 
       setCurrentFolder((current) => (isPathInside(current, folder) ? parentFolder(folder) : current));
       await load();
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "フォルダを削除できませんでした。");
+      setError(deleteError instanceof Error ? deleteError.message : "フォルダ削除に失敗");
     } finally {
       setLoading(false);
     }
@@ -259,7 +259,7 @@ export function AssetBrowser({ open, onClose, scope = "", scopeLabel = "共有" 
     setDialog({
       kind: "confirm",
       title: "フォルダを削除",
-      message: `assets/${folder}/ を中身ごと削除します。この操作は元に戻せません。`,
+      message: `assets/${folder}/ を中身ごと削除。取り消し不可。`,
       confirmLabel: "削除",
       danger: true,
       onConfirm: () => {
@@ -304,7 +304,7 @@ export function AssetBrowser({ open, onClose, scope = "", scopeLabel = "共有" 
       setCurrentFolder(renamed.folder ?? file.folder);
       await load();
     } catch (renameError) {
-      setError(renameError instanceof Error ? renameError.message : "ファイル名を変更できませんでした。");
+      setError(renameError instanceof Error ? renameError.message : "ファイル名変更に失敗");
     } finally {
       setLoading(false);
     }
@@ -349,7 +349,7 @@ export function AssetBrowser({ open, onClose, scope = "", scopeLabel = "共有" 
       setExpandedFolders((current) => new Set([...current].map((item) => replacePathPrefix(item, folder, renamedFolder))));
       await load();
     } catch (renameError) {
-      setError(renameError instanceof Error ? renameError.message : "フォルダ名を変更できませんでした。");
+      setError(renameError instanceof Error ? renameError.message : "フォルダ名変更に失敗");
     } finally {
       setLoading(false);
     }
@@ -443,7 +443,7 @@ export function AssetBrowser({ open, onClose, scope = "", scopeLabel = "共有" 
         <header className="docs-header">
           <div>
             <h2>ファイル</h2>
-            <p>{scopeLabel}のassetsです。Create.Spriteでは拡張子なしのパスを使います。</p>
+            <p>{scopeLabel} / assets</p>
           </div>
           <div className="toolbar-group">
             <input ref={inputRef} className="hidden-file-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp,audio/mpeg,audio/wav,audio/ogg,audio/mp4" onChange={(event) => upload(event.target.files?.[0])} />
@@ -659,8 +659,8 @@ function AssetPreview({
       <div className="asset-preview-panel" onContextMenu={onContextMenu}>
         <div className="empty-state">
           {fileCount === 0
-            ? `assets/${currentFolder ? `${currentFolder}/` : ""} にはまだ素材がありません。右クリックで画像・音声を追加できます。`
-            : "左のツリーから素材を選ぶと、ここで確認できます。"}
+            ? `assets/${currentFolder ? `${currentFolder}/` : ""} is empty`
+            : "Select an asset"}
         </div>
       </div>
     );

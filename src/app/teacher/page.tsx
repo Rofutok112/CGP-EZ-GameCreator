@@ -6,10 +6,10 @@ export default function TeacherPage() {
     <main className="app-shell">
       <header className="topbar">
         <div className="brand">
-          <h1>先生画面</h1>
-          <span>リアルタイム確認</span>
+          <h1>Teacher</h1>
+          <span>Live Monitor</span>
         </div>
-        <Link href="/">生徒画面へ</Link>
+        <Link href="/">Student</Link>
       </header>
       <section className="teacher-main">
         <LiveSessionsTable />

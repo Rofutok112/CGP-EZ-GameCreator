@@ -201,7 +201,7 @@ class CanvasHost implements RuntimeHost {
     }
   }
 
-  renderIdle(message = "Startでプレビューを開始") {
+  renderIdle(message = "Ready") {
     const ctx = this.canvas.getContext("2d");
     if (!ctx) return;
     ctx.clearRect(0, 0, WIDTH, HEIGHT);
@@ -423,7 +423,7 @@ export function GameCanvas({ code, control, sessionId, assetScope = "", onDiagno
     if (control === "stopped") {
       host.clear();
       instanceRef.current = null;
-      host.renderIdle("停止中");
+      host.renderIdle("Stopped");
       return;
     }
 
@@ -432,7 +432,7 @@ export function GameCanvas({ code, control, sessionId, assetScope = "", onDiagno
       if (compiled.diagnostics.length > 0) {
         onDiagnosticsRef.current(compiled.diagnostics);
         if (compiled.diagnostics.some((item) => item.severity === "error")) {
-          host.renderIdle("コードにエラーがあります");
+          host.renderIdle("Error");
           onStopRef.current?.();
           return;
         }
@@ -444,8 +444,8 @@ export function GameCanvas({ code, control, sessionId, assetScope = "", onDiagno
         onDiagnosticsRef.current([]);
         host.render();
       } catch (error) {
-        onDiagnosticsRef.current(error instanceof DslError ? [error.diagnostic] : [{ severity: "error", line: 1, column: 1, message: "実行開始時にエラーが起きました。" }]);
-        host.renderIdle("開始できませんでした");
+        onDiagnosticsRef.current(error instanceof DslError ? [error.diagnostic] : [{ severity: "error", line: 1, column: 1, message: "実行開始エラー" }]);
+        host.renderIdle("Failed");
         onStopRef.current?.();
         return;
       }
@@ -468,7 +468,7 @@ export function GameCanvas({ code, control, sessionId, assetScope = "", onDiagno
         }
         host.render();
       } catch (error) {
-        onDiagnosticsRef.current(error instanceof DslError ? [error.diagnostic] : [{ severity: "error", line: 1, column: 1, message: "実行中にエラーが起きました。" }]);
+        onDiagnosticsRef.current(error instanceof DslError ? [error.diagnostic] : [{ severity: "error", line: 1, column: 1, message: "実行時エラー" }]);
         host.render();
         onStopRef.current?.();
         return;

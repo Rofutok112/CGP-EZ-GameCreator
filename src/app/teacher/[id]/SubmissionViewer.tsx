@@ -58,7 +58,7 @@ export function SubmissionViewer({ clientId }: { clientId: string }) {
           setError("");
         }
       } catch {
-        if (active) setError("この生徒のリアルタイム共有を取得できませんでした。");
+        if (active) setError("Liveデータ取得に失敗");
       } finally {
         loading = false;
       }
@@ -158,9 +158,9 @@ export function SubmissionViewer({ clientId }: { clientId: string }) {
           <div>
             <strong>{session?.title ?? "読み込み中"}</strong>
             <span className="teacher-subtitle">
-              {session ? `${session.studentName} / rev.${session.revision} / 最終同期 ${new Date(session.updatedAt).toLocaleTimeString("ja-JP")}` : error}
+              {session ? `${session.studentName} / rev.${session.revision} / Sync ${new Date(session.updatedAt).toLocaleTimeString("ja-JP")}` : error}
             </span>
-            {hasNewCode ? <span className="diagnostic-state warning">新しいコードが届いています。StopしてStartすると反映されます。</span> : null}
+            {hasNewCode ? <span className="diagnostic-state warning">New revision / Stop to Start</span> : null}
           </div>
           <div className="toolbar-group">
             <button className={!session || previewState !== "stopped" || hasErrors ? "state-disabled" : "primary"} onClick={start} disabled={!session || previewState !== "stopped" || hasErrors}>

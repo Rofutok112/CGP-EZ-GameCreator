@@ -38,7 +38,7 @@ export function LiveSessionsTable() {
           setError("");
         }
       } catch {
-        if (active) setError("リアルタイム一覧を取得できませんでした。");
+        if (active) setError("Live一覧の取得に失敗");
       } finally {
         loading = false;
       }
@@ -74,7 +74,7 @@ export function LiveSessionsTable() {
     const path = clientId ? `/api/live/${clientId}` : "/api/live";
     const response = await fetch(`${path}?${params}`, { method: "DELETE" });
     if (!response.ok) {
-      setError("セッションを整理できませんでした。");
+      setError("セッション整理に失敗");
       return;
     }
     setRows((current) =>
@@ -105,15 +105,15 @@ export function LiveSessionsTable() {
           </span>
         </label>
         <button onClick={() => archive(undefined, 30)}>
-          <Trash2 size={16} /> 30分以上未更新を非表示
+          <Trash2 size={16} /> 古いセッションを隠す
         </button>
         <button className="state-stop-active" onClick={() => setResetDialogOpen(true)}>
-          <Trash2 size={16} /> 授業をリセット
+          <Trash2 size={16} /> 授業リセット
         </button>
       </section>
       <div className="live-board">
       {error ? <div className="panel empty-state">{error}</div> : null}
-      {!error && filteredRows.length === 0 ? <div className="panel empty-state">表示できる生徒はいません。</div> : null}
+      {!error && filteredRows.length === 0 ? <div className="panel empty-state">No Sessions</div> : null}
       {!error
         ? filteredRows.map((row) => {
             const ageMs = Date.now() - new Date(row.updatedAt).getTime();
@@ -126,12 +126,12 @@ export function LiveSessionsTable() {
                     <h2>{row.studentName}</h2>
                     <p>{row.title} / rev.{row.revision}</p>
                   </div>
-                  <span className={`live-state ${online ? "online" : "offline"}`}>{online ? "同期中" : "未更新"}</span>
+                  <span className={`live-state ${online ? "online" : "offline"}`}>{online ? "Live" : "Idle"}</span>
                 </header>
                 <CodePreview code={row.code} className="live-code-preview" cursorLine={row.cursorLine} cursorColumn={row.cursorColumn} autoFollowCursor />
                 <footer className="live-card-footer">
-                  <span>最終同期 {new Date(row.updatedAt).toLocaleTimeString("ja-JP")}</span>
-                  <button onClick={() => archive(row.clientId)}>非表示</button>
+                  <span>Sync {new Date(row.updatedAt).toLocaleTimeString("ja-JP")}</span>
+                  <button onClick={() => archive(row.clientId)}>Hide</button>
                   <Link href={`/teacher/${row.clientId}`}>開く</Link>
                 </footer>
               </article>
@@ -141,8 +141,8 @@ export function LiveSessionsTable() {
       </div>
       <ConfirmDialog
         open={resetDialogOpen}
-        title="授業をリセット"
-        message={`授業ID「${classroomId}」の表示中セッションをすべて非表示にします。この操作は元に戻せません。`}
+        title="Reset Class"
+        message={`授業ID「${classroomId}」の表示中セッションをすべて非表示にする。取り消し不可。`}
         confirmLabel="リセット"
         danger
         onConfirm={() => {

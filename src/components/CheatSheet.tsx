@@ -111,7 +111,7 @@ export function CheatSheet({ open, onClose }: { open: boolean; onClose(): void }
         <header className="docs-header">
           <div>
             <h2>APIドキュメント</h2>
-            <p>左の構造から、使いたい機能を探します。</p>
+            <p>API Reference</p>
           </div>
           <button onClick={onClose} aria-label="ドキュメントを閉じる">
             <X size={16} /> 閉じる
