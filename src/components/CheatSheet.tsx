@@ -2,6 +2,7 @@
 
 import { FileText, Folder, X } from "lucide-react";
 import { useState } from "react";
+import { highlightDslLine } from "@/lib/highlight";
 
 const groups = [
   {
@@ -143,9 +144,7 @@ export function CheatSheet({ open, onClose }: { open: boolean; onClose(): void }
                       {"example" in item ? (
                         <details className="docs-example">
                           <summary>使用例</summary>
-                          <pre>
-                            <code>{item.example}</code>
-                          </pre>
+                          <HighlightedExample code={item.example} />
                         </details>
                       ) : null}
                     </td>
@@ -157,5 +156,22 @@ export function CheatSheet({ open, onClose }: { open: boolean; onClose(): void }
         </div>
       </section>
     </div>
+  );
+}
+
+function HighlightedExample({ code }: { code: string }) {
+  return (
+    <pre className="docs-example-code">
+      {code.split(/\r?\n/).map((line, lineIndex) => (
+        <span className="code-line" key={lineIndex}>
+          {highlightDslLine(line).map((token, tokenIndex) => (
+            <span className={token.className || undefined} key={tokenIndex}>
+              {token.text}
+            </span>
+          ))}
+          {"\n"}
+        </span>
+      ))}
+    </pre>
   );
 }

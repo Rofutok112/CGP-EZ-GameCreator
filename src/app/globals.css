@@ -696,17 +696,21 @@ canvas {
   user-select: none;
 }
 
-.docs-example pre {
+.docs-example-code {
   margin: 8px 0 0;
   padding: 10px 12px;
   overflow: auto;
   border-radius: 6px;
   background: var(--code);
+  color: #d4d4d4;
+  font-family: Consolas, "Cascadia Code", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
 }
 
-.docs-example pre code {
-  color: #d4d4d4;
-  white-space: pre;
+.docs-example-code .code-line {
+  display: block;
 }
 
 .asset-dialog {
