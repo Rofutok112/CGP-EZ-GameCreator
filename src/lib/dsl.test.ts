@@ -408,6 +408,62 @@ describe("DSL", () => {
     ]);
   });
 
+  it("supports ++ and -- in loops", () => {
+    const code = `class Main
+{
+    Text label;
+    int count = 0;
+
+    void Start()
+    {
+        label = Create.Text("", 20, 20, 20);
+        for (int i = 0; i < 3; i++)
+        {
+            count++;
+        }
+        count--;
+        label.value = "" + count;
+    }
+
+    void Update()
+    {
+    }
+}`;
+    const compiled = compileDsl(code);
+    expect(compiled.diagnostics).toEqual([]);
+    const host = new MockHost();
+    compiled.createInstance(host).start();
+    expect(host.entities[0].value).toBe("2");
+  });
+
+  it("allows string Length and index access", () => {
+    const code = `class Main
+{
+    Text label;
+    string text = "abc";
+    string result = "";
+
+    void Start()
+    {
+        label = Create.Text("", 20, 20, 20);
+        for (int i = 0; i < text.Length; i++)
+        {
+            result = result + text[i];
+        }
+        label.value = result;
+    }
+
+    void Update()
+    {
+    }
+}`;
+    const compiled = compileDsl(code);
+    expect(compiled.diagnostics).toEqual([]);
+    const host = new MockHost();
+    compiled.createInstance(host).start();
+    expect(host.entities[0].value).toBe("abc");
+  });
+
   it("requires f suffix for decimal float literals", () => {
     const diagnostics = analyzeDsl(`class Main
 {

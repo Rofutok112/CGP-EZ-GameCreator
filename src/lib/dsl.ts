@@ -448,8 +448,9 @@ class StaticAnalyzer {
       case "index": {
         const ownerType = this.typeOf(expr.object, scope);
         this.expectAssignable("int", this.typeOf(expr.index, scope), expr.token);
+        if (ownerType === "string") return "string";
         if (!isListType(ownerType)) {
-          this.add(expr.token, "[] で取り出せるのは List<T> だけです。");
+          this.add(expr.token, "[] で取り出せるのは string または List<T> だけです。");
           return "unknown";
         }
         return ownerType.slice(5, -1) as StaticType;
@@ -538,6 +539,11 @@ class StaticAnalyzer {
       if (property === "Count") return "int";
       if (["Add", "Remove", "Clear"].includes(property)) return "unknown";
       this.add(token, `List に ${property} というプロパティ/メソッドはありません。`);
+      return "unknown";
+    }
+    if (ownerType === "string") {
+      if (property === "Length") return "int";
+      this.add(token, `string に ${property} というプロパティ/メソッドはありません。`);
       return "unknown";
     }
     if (isNumberType(ownerType)) {
@@ -890,7 +896,7 @@ function lex(source: string): Token[] {
     }
 
     const two = source.slice(i, i + 2);
-    if (["==", "!=", "<=", ">=", "&&", "||", "+=", "-=", "*=", "/="].includes(two)) {
+    if (["==", "!=", "<=", ">=", "&&", "||", "+=", "-=", "*=", "/=", "++", "--"].includes(two)) {
       advance();
       advance();
       push("operator", two, startLine, startColumn);
@@ -1066,12 +1072,14 @@ class Parser {
   private parseAssignment(): Expr {
     const expr = this.parseOr();
     if (this.match("operator", "=")) return { kind: "assign", target: expr, value: this.parseAssignment(), token: this.previous() };
-    if (this.match("operator", "+=")) {
+    if (this.match("operator", "+=") || this.match("operator", "-=") || this.match("operator", "*=") || this.match("operator", "/=")) {
+      const token = this.previous();
+      const op = token.value[0];
       return {
         kind: "assign",
         target: expr,
-        value: { kind: "binary", left: expr, op: "+", right: this.parseAssignment(), token: this.previous() },
-        token: this.previous()
+        value: { kind: "binary", left: expr, op, right: this.parseAssignment(), token },
+        token
       };
     }
     return expr;
@@ -1146,6 +1154,14 @@ class Parser {
         const index = this.parseExpression();
         const bracket = this.consume("symbol", "]", "インデックス参照の最後に ] が必要です。");
         expr = { kind: "index", object: expr, index, token: bracket };
+      } else if (this.match("operator", "++") || this.match("operator", "--")) {
+        const token = this.previous();
+        expr = {
+          kind: "assign",
+          target: expr,
+          value: { kind: "binary", left: expr, op: token.value === "++" ? "+" : "-", right: { kind: "literal", value: 1, token }, token },
+          token
+        };
       } else {
         break;
       }
@@ -1369,8 +1385,15 @@ export class DslInstance {
       case "member":
         return this.getMember(this.evaluate(expr.object, scope), expr.property, expr.token);
       case "index": {
-        const list = this.expectList(this.evaluate(expr.object, scope), expr.token);
+        const owner = this.evaluate(expr.object, scope);
         const index = toNumber(this.evaluate(expr.index, scope), expr.token);
+        if (typeof owner === "string") {
+          if (!Number.isInteger(index) || index < 0 || index >= owner.length) {
+            throw diagnostic(expr.token, `文字列の ${index} 番目は存在しません。Length は ${owner.length} です。`);
+          }
+          return owner[index];
+        }
+        const list = this.expectList(owner, expr.token);
         if (!Number.isInteger(index) || index < 0 || index >= list.items.length) {
           throw diagnostic(expr.token, `リストの ${index} 番目は存在しません。Count は ${list.items.length} です。`);
         }
@@ -1433,6 +1456,10 @@ export class DslInstance {
     if (isList(value)) {
       if (property === "Count") return value.items.length;
       return { __kind: "builtin", name: property as never };
+    }
+    if (typeof value === "string") {
+      if (property === "Length") return value.length;
+      throw diagnostic(token, `string に ${property} というプロパティはありません。`);
     }
     if (isBuiltin(value)) {
       if (value.name === "Time") {

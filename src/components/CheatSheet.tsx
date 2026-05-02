@@ -11,7 +11,7 @@ const groups = [
       { name: "int", description: "整数を入れる型", example: "int score = 0;" },
       { name: "float", description: "小数を入れる型", example: "float speed = 5.0f;" },
       { name: "bool", description: "true / false を入れる型", example: "bool isClear = false;" },
-      { name: "string", description: "文字を入れる型", example: "string label = \"Score\";" },
+      { name: "string", description: "文字を入れる型", example: "string label = \"Score\";\nstring first = label[0];" },
       { name: "GameObject", description: "四角や円など、画面上の物体", example: "GameObject player;\nplayer = Create.Box(100, 160, 36, 36);" },
       { name: "Text", description: "画面に固定表示される文字", example: "Text scoreText;\nscoreText = Create.Text(\"Score: 0\", 20, 20, 24);" },
       { name: "List<T>", description: "同じ型の値を複数持つ入れ物", example: "List<GameObject> enemies = new List<GameObject>();\nenemies.Add(Create.Box(500, 160, 32, 32));" }
@@ -69,6 +69,14 @@ const groups = [
     ]
   },
   {
+    title: "string",
+    items: [
+      { name: "Length", description: "文字数", example: "string text = \"hello\";\nint count = text.Length;" },
+      { name: "text[index]", description: "番号で1文字を取り出す。結果は1文字のstring", example: "string text = \"hello\";\nstring first = text[0];" },
+      { name: "forで1文字ずつ読む", description: "Length と [] を組み合わせる", example: "string text = \"hello\";\nfor (int i = 0; i < text.Length; i++)\n{\n    string ch = text[i];\n}" }
+    ]
+  },
+  {
     title: "入力/補助",
     items: [
       { name: "key.Down(\"A\")", description: "押している間true", example: "if (key.Down(\"A\"))\n{\n    player.vx = -5.0f;\n}" },
@@ -83,6 +91,7 @@ const groups = [
   {
     title: "Math",
     items: [
+      { name: "i++ / i--", description: "数値を1増やす/1減らす", example: "for (int i = 0; i < 10; i++)\n{\n    score++;\n}" },
       { name: "1.0f / 0.25f", description: "Unity/C#風のfloatリテラル。小数を書くときは末尾に f が必要", example: "float speed = 5.0f;\nfloat rate = 0.25f;" },
       { name: "Math.Round(value, digits)", description: "数値を指定した小数桁に丸める", example: "float rounded = Math.Round(Time.time, 2);" },
       { name: "Math.Fixed(value, digits)", description: "指定した小数桁で表示する文字列にする", example: "timerText.value = Math.Fixed(Time.time, 2);" },

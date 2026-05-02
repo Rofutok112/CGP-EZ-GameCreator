@@ -35,7 +35,7 @@ const snippetCompletions = [
     type: "keyword",
     detail: "else文"
   }),
-  snippetCompletion("for (int ${i} = 0; ${i} < ${count}; ${i} = ${i} + 1)\n{\n    ${}\n}", {
+  snippetCompletion("for (int ${i} = 0; ${i} < ${count}; ${i}++)\n{\n    ${}\n}", {
     label: "for",
     type: "keyword",
     detail: "for文"
@@ -126,6 +126,9 @@ const memberCompletions: Record<string, { label: string; type: string; detail?: 
   ],
   float: [
     { label: "ToString", type: "function", detail: "value.ToString(\"F2\")" }
+  ],
+  string: [
+    { label: "Length", type: "property", detail: "文字数" }
   ],
   List: [
     { label: "Add", type: "function" },
