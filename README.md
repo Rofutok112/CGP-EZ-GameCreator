@@ -38,6 +38,21 @@ http://localhost:3000/teacher
 http://<サーバーPCのIPアドレス>:3000
 ```
 
+## GitHub Pages 体験版
+
+GitHub Pages ではサーバーAPIを使えないため、静的ページとして動く範囲だけを公開します。
+
+- 使えるもの: エディタ、静的解析、ゲームプレビュー、ドキュメント、ブラウザ内保存
+- 使えないもの: 先生画面、リアルタイム同期、SQLite、画面からのファイル追加/削除
+
+静的書き出しは次のコマンドで確認できます。
+
+```bash
+npm run build:pages
+```
+
+`main` に push すると GitHub Actions が `out/` を GitHub Pages にデプロイします。
+
 ## 授業での使い方
 
 1. 先生PCで `npm run dev` を起動します。
@@ -169,4 +184,5 @@ Math.Ceil(value)
 npx tsc --noEmit
 npm test
 npm run build
+npm run build:pages
 ```

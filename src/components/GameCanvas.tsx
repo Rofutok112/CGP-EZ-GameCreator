@@ -14,6 +14,7 @@ type GameCanvasProps = {
 
 const WIDTH = 640;
 const HEIGHT = 360;
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 class CanvasHost implements RuntimeHost {
   width = WIDTH;
@@ -376,7 +377,7 @@ function assetUrls(name: string, scope: string, extensions: string[]) {
 
 function assetUrl(fileName: string, scope: string) {
   const encoded = fileName.split("/").map(encodeURIComponent).join("/");
-  return scope ? `/assets/${encodeURIComponent(scope)}/${encoded}` : `/assets/${encoded}`;
+  return scope ? `${basePath}/assets/${encodeURIComponent(scope)}/${encoded}` : `${basePath}/assets/${encoded}`;
 }
 
 export function GameCanvas({ code, control, sessionId, assetScope = "", onDiagnostics, onStop }: GameCanvasProps) {

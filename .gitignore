@@ -3,6 +3,8 @@ node_modules/
 data/
 coverage/
 dist/
+out/
+.pages-build-disabled/
 *.tsbuildinfo
 .env*.local
 public/assets/*

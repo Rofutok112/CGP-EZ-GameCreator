@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { BookOpen, FolderOpen, Maximize2, Minimize2, Pause, Play, RotateCcw, Save, Square } from "lucide-react";
 import type { MutableRefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -13,6 +12,8 @@ import { GameCanvas } from "@/components/GameCanvas";
 import { getBrowserStorage } from "@/lib/browserStorage";
 import { analyzeDsl, type DslDiagnostic } from "@/lib/dsl";
 import { sampleCode } from "@/lib/sample";
+
+const isStaticExport = process.env.NEXT_PUBLIC_STATIC_EXPORT === "true";
 
 export default function Home() {
   const editorRef = useRef<CodeEditorHandle | null>(null);
@@ -87,6 +88,7 @@ export default function Home() {
   }, [code, saveState]);
 
   useEffect(() => {
+    if (isStaticExport) return;
     if (!clientId) return;
     setSyncState("syncing");
     const revision = revisionRef.current;
@@ -122,6 +124,7 @@ export default function Home() {
   }, [clientId, classroomId, studentName, title, code, cursorPosition]);
 
   useEffect(() => {
+    if (isStaticExport) return;
     if (!clientId) return;
     const sendHeartbeat = async () => {
       try {
@@ -283,9 +286,7 @@ export default function Home() {
       <header className="topbar">
         <div className="brand">
           <h1>CGP EZ GameCreator</h1>
-        </div>
-        <div className="toolbar-group">
-          <Link href="/teacher">先生画面</Link>
+          {isStaticExport ? <span>静的体験版</span> : null}
         </div>
       </header>
 
@@ -319,9 +320,11 @@ export default function Home() {
               <button onClick={() => setDocsOpen(true)}>
                 <BookOpen size={16} /> ドキュメント
               </button>
-              <button onClick={() => setAssetsOpen(true)}>
-                <FolderOpen size={16} /> ファイル
-              </button>
+              {!isStaticExport ? (
+                <button onClick={() => setAssetsOpen(true)}>
+                  <FolderOpen size={16} /> ファイル
+                </button>
+              ) : null}
             </div>
             <div className={hasErrors ? "diagnostic-state error" : "ok"}>
               {hasErrors ? "エラーあり" : "実行できます"} / {saveState === "dirty" ? "未保存" : saveState === "saving" ? "保存中" : `保存済み${savedAt ? ` ${savedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}` : ""}`}
@@ -351,16 +354,23 @@ export default function Home() {
             </div>
           </div>
           <GameCanvas code={previewCode} control={previewState} sessionId={sessionId} assetScope={clientId} onDiagnostics={setRuntimeDiagnostics} onStop={() => setPreviewState("stopped")} />
-          <section className="submit-box">
-            <h2>リアルタイム共有</h2>
-            <div className="submit-row">
-              <input value={classroomId} onChange={(event) => updateClassroomId(event.target.value)} placeholder="授業ID" />
-              <input value={studentName} onChange={(event) => updateStudentName(event.target.value)} placeholder="名前" />
-              <input value={title} onChange={(event) => updateTitle(event.target.value)} placeholder="作品名" />
-              <div className={`sync-badge ${syncState}`}>{syncLabel(syncState)}{lastSyncedAt ? ` ${lastSyncedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}` : ""}</div>
-            </div>
-            {message ? <p className="ok">{message}</p> : null}
-          </section>
+          {isStaticExport ? (
+            <section className="submit-box">
+              <h2>静的体験版</h2>
+              <p className="ok">コードはこのブラウザに保存されます。先生画面、リアルタイム同期、ファイル追加はLAN版で使えます。</p>
+            </section>
+          ) : (
+            <section className="submit-box">
+              <h2>リアルタイム共有</h2>
+              <div className="submit-row">
+                <input value={classroomId} onChange={(event) => updateClassroomId(event.target.value)} placeholder="授業ID" />
+                <input value={studentName} onChange={(event) => updateStudentName(event.target.value)} placeholder="名前" />
+                <input value={title} onChange={(event) => updateTitle(event.target.value)} placeholder="作品名" />
+                <div className={`sync-badge ${syncState}`}>{syncLabel(syncState)}{lastSyncedAt ? ` ${lastSyncedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}` : ""}</div>
+              </div>
+              {message ? <p className="ok">{message}</p> : null}
+            </section>
+          )}
         </section>
       </div>
       <CheatSheet open={docsOpen} onClose={() => setDocsOpen(false)} />
