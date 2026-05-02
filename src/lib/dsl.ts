@@ -921,9 +921,9 @@ class Parser {
   constructor(private readonly tokens: Token[]) {}
 
   parseProgram(): ProgramAst {
-    this.consume("keyword", "class", "最初に class Main を書いてください。");
-    this.consume("identifier", "Main", "クラス名は Main にしてください。");
-    this.consume("symbol", "{", "class Main の後に { が必要です。");
+    this.consume("keyword", "class", "最初に class を書いてください。");
+    const className = this.consumeIdentifier("クラス名が必要です。例: class Player");
+    this.consume("symbol", "{", `class ${className.value} の後に { が必要です。`);
 
     const fields: FieldDecl[] = [];
     const methods = new Map<string, MethodDecl>();
@@ -949,7 +949,7 @@ class Parser {
       }
     }
 
-    this.consume("symbol", "}", "class Main の最後に } が必要です。");
+    this.consume("symbol", "}", `class ${className.value} の最後に } が必要です。`);
     if (!start) throw diagnostic(this.peek(), "void Start() が必要です。ゲーム開始時の作成処理を書いてください。");
     if (!update) throw diagnostic(this.peek(), "void Update() が必要です。毎フレームの処理を書いてください。");
     return { fields, start, update, methods };

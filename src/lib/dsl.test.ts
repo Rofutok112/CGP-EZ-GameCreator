@@ -81,9 +81,23 @@ describe("DSL", () => {
     expect(host.entities).toEqual([]);
   });
 
-  it("requires class Main with Start and Update", () => {
+  it("requires a class with Start and Update", () => {
     const compiled = compileDsl("void Update() {}");
-    expect(compiled.diagnostics[0]?.message).toContain("class Main");
+    expect(compiled.diagnostics[0]?.message).toContain("class");
+  });
+
+  it("allows a custom class name", () => {
+    const compiled = compileDsl(`class Player
+{
+    void Start()
+    {
+    }
+
+    void Update()
+    {
+    }
+}`);
+    expect(compiled.diagnostics).toEqual([]);
   });
 
   it("destroys objects and rejects later access", () => {

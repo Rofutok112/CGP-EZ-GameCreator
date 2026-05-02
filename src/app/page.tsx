@@ -1,9 +1,9 @@
 "use client";
 
-import { BookOpen, FolderOpen, Maximize2, Minimize2, Pause, Play, RotateCcw, Save, Square } from "lucide-react";
+import { BookOpen, FolderOpen, Maximize2, Minimize2, Pause, Play, Plus, RotateCcw, Save, Square, X } from "lucide-react";
 import type { MutableRefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ConfirmDialog } from "@/components/AppDialog";
+import { ConfirmDialog, TextInputDialog } from "@/components/AppDialog";
 import { AssetBrowser } from "@/components/AssetBrowser";
 import { CheatSheet } from "@/components/CheatSheet";
 import { CodeEditor, type CodeEditorHandle } from "@/components/CodeEditor";
@@ -15,11 +15,18 @@ import { sampleCode } from "@/lib/sample";
 
 const isStaticExport = process.env.NEXT_PUBLIC_STATIC_EXPORT === "true";
 
+type EditorPage = {
+  id: string;
+  name: string;
+  code: string;
+};
+
 export default function Home() {
   const editorRef = useRef<CodeEditorHandle | null>(null);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const editorPanelRef = useRef<HTMLElement | null>(null);
-  const [code, setCode] = useState(sampleCode);
+  const [pages, setPages] = useState<EditorPage[]>([]);
+  const [activePageId, setActivePageId] = useState("");
   const [previewCode, setPreviewCode] = useState(sampleCode);
   const [previewState, setPreviewState] = useState<"stopped" | "running" | "paused">("stopped");
   const [sessionId, setSessionId] = useState(0);
@@ -41,15 +48,21 @@ export default function Home() {
   const [docsOpen, setDocsOpen] = useState(false);
   const [assetsOpen, setAssetsOpen] = useState(false);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [newPageDialogOpen, setNewPageDialogOpen] = useState(false);
+  const [deletePageDialogOpen, setDeletePageDialogOpen] = useState(false);
   const revisionRef = useRef(0);
+  const activePage = useMemo(() => pages.find((page) => page.id === activePageId) ?? pages[0] ?? null, [activePageId, pages]);
+  const code = activePage?.code ?? "";
+  const hasActivePage = activePage !== null;
 
   useEffect(() => {
     const storage = getBrowserStorage();
-    const saved = storage.getItem("cgp-ez-code");
-    if (saved) {
-      setCode(saved);
-      setPreviewCode(saved);
-    }
+    const loadedPages = loadPagesFromStorage();
+    setPages(loadedPages);
+    const savedActivePageId = storage.getItem("cgp-ez-active-page-id");
+    const nextActivePage = loadedPages.find((page) => page.id === savedActivePageId) ?? loadedPages[0] ?? null;
+    setActivePageId(nextActivePage?.id ?? "");
+    setPreviewCode(nextActivePage?.code ?? "");
     const savedAtText = storage.getItem("cgp-ez-saved-at");
     if (savedAtText) setSavedAt(new Date(savedAtText));
     let id = storage.getItem("cgp-ez-client-id");
@@ -71,21 +84,26 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (!hasActivePage) {
+      setStaticDiagnostics([]);
+      return;
+    }
     const timer = window.setTimeout(() => {
       setStaticDiagnostics(analyzeDsl(code));
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [code]);
+  }, [code, hasActivePage]);
 
   useEffect(() => {
     if (saveState !== "dirty") return;
     const timer = window.setTimeout(() => {
+      persistPages(pages, activePageId);
       persistCode(code);
       setSaveState("saved");
       setSavedAt(new Date());
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [code, saveState]);
+  }, [activePageId, code, pages, saveState]);
 
   useEffect(() => {
     if (isStaticExport) return;
@@ -158,6 +176,7 @@ export default function Home() {
   }, [clientId, classroomId, studentName, title, code, cursorPosition]);
 
   const start = useCallback(() => {
+    if (!hasActivePage) return;
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     const nextDiagnostics = analyzeDsl(code);
     setStaticDiagnostics(nextDiagnostics);
@@ -166,7 +185,7 @@ export default function Home() {
     setPreviewCode(code);
     setPreviewState("running");
     setSessionId((value) => value + 1);
-  }, [code]);
+  }, [code, hasActivePage]);
 
   const pause = useCallback(() => {
     setPreviewState((state) => (state === "running" ? "paused" : "running"));
@@ -179,20 +198,59 @@ export default function Home() {
 
   const save = useCallback(() => {
     setSaveState("saving");
+    persistPages(pages, activePageId);
     persistCode(code);
     const now = new Date();
     setSavedAt(now);
     setSaveState("saved");
     setMessage("保存完了");
-  }, [code]);
+  }, [activePageId, code, pages]);
 
   const updateCode = useCallback((nextCode: string) => {
+    if (!activePageId) return;
     bumpRevision(revisionRef);
-    setCode(nextCode);
+    setPages((currentPages) => currentPages.map((page) => page.id === activePageId ? { ...page, code: nextCode } : page));
     setStaticDiagnostics(analyzeDsl(nextCode));
     setSaveState("dirty");
     setRuntimeDiagnostics([]);
-  }, []);
+  }, [activePageId]);
+
+  const selectPage = useCallback((pageId: string) => {
+    if (previewState !== "stopped") return;
+    const nextPage = pages.find((page) => page.id === pageId);
+    if (!nextPage) return;
+    setActivePageId(pageId);
+    getBrowserStorage().setItem("cgp-ez-active-page-id", pageId);
+    setStaticDiagnostics(analyzeDsl(nextPage.code));
+    setRuntimeDiagnostics([]);
+  }, [pages, previewState]);
+
+  const addPage = useCallback((name: string) => {
+    const className = toClassName(name, pages.length + 1);
+    const nextPage = createEditorPage(className, emptyPageCode(className));
+    bumpRevision(revisionRef);
+    setPages((currentPages) => [...currentPages, nextPage]);
+    setActivePageId(nextPage.id);
+    getBrowserStorage().setItem("cgp-ez-active-page-id", nextPage.id);
+    setStaticDiagnostics(analyzeDsl(nextPage.code));
+    setRuntimeDiagnostics([]);
+    setSaveState("dirty");
+    setNewPageDialogOpen(false);
+  }, [pages.length]);
+
+  const deletePage = useCallback((pageId: string) => {
+    bumpRevision(revisionRef);
+    const activeIndex = pages.findIndex((page) => page.id === pageId);
+    const nextPages = pages.filter((page) => page.id !== pageId);
+    const nextActive = pageId === activePageId ? nextPages[Math.max(0, Math.min(activeIndex, nextPages.length - 1))] ?? null : activePage;
+    setPages(nextPages);
+    setActivePageId(nextActive?.id ?? "");
+    getBrowserStorage().setItem("cgp-ez-active-page-id", nextActive?.id ?? "");
+    setStaticDiagnostics(nextActive ? analyzeDsl(nextActive.code) : []);
+    setRuntimeDiagnostics([]);
+    setSaveState("dirty");
+    setDeletePageDialogOpen(false);
+  }, [activePage, activePageId, pages]);
 
   const updateClassroomId = useCallback((nextClassroomId: string) => {
     const normalized = nextClassroomId.trim() || "default";
@@ -214,6 +272,7 @@ export default function Home() {
   }, []);
 
   const resetCode = useCallback(() => {
+    if (!hasActivePage) return;
     if (code !== sampleCode) {
       setResetDialogOpen(true);
       return;
@@ -221,7 +280,7 @@ export default function Home() {
     updateCode(sampleCode);
     setPreviewState("stopped");
     setMessage("リセット完了");
-  }, [code, updateCode]);
+  }, [code, hasActivePage, updateCode]);
 
   const confirmResetCode = useCallback(() => {
     setResetDialogOpen(false);
@@ -298,11 +357,11 @@ export default function Home() {
         <section
           ref={editorPanelRef}
           className="panel editor-panel"
-          style={{ gridTemplateRows: `auto minmax(0, ${1 - diagnosticsRatio}fr) 8px minmax(96px, ${diagnosticsRatio}fr)` }}
+          style={{ gridTemplateRows: `auto auto minmax(0, ${1 - diagnosticsRatio}fr) 8px minmax(96px, ${diagnosticsRatio}fr)` }}
         >
           <div className="panel-toolbar">
             <div className="toolbar-group">
-              <button className={previewState !== "stopped" || hasErrors ? "state-disabled" : "primary"} onClick={start} disabled={previewState !== "stopped" || hasErrors} title="Ctrl+Enter">
+              <button className={previewState !== "stopped" || hasErrors || !hasActivePage ? "state-disabled" : "primary"} onClick={start} disabled={previewState !== "stopped" || hasErrors || !hasActivePage} title="Ctrl+Enter">
                 <Play size={16} /> Start
               </button>
               <button className={previewState === "stopped" ? "state-stopped" : previewState === "paused" ? "state-paused" : ""} onClick={pause} disabled={previewState === "stopped"}>
@@ -314,7 +373,7 @@ export default function Home() {
               <button onClick={save} title="Ctrl+S">
                 <Save size={16} /> 保存
               </button>
-              <button onClick={resetCode}>
+              <button onClick={resetCode} disabled={!hasActivePage}>
                 <RotateCcw size={16} /> リセット
               </button>
               <button onClick={() => setDocsOpen(true)}>
@@ -327,10 +386,41 @@ export default function Home() {
               ) : null}
             </div>
             <div className={hasErrors ? "diagnostic-state error" : "ok"}>
-              {hasErrors ? "Error" : "実行可能"} / {saveState === "dirty" ? "未保存" : saveState === "saving" ? "保存中" : `保存済${savedAt ? ` ${savedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}` : ""}`}
+              {!hasActivePage ? "スクリプトなし" : hasErrors ? "Error" : "実行可能"} / {saveState === "dirty" ? "未保存" : saveState === "saving" ? "保存中" : `保存済${savedAt ? ` ${savedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}` : ""}`}
             </div>
           </div>
-          <CodeEditor ref={editorRef} value={code} diagnostics={diagnostics} readOnly={previewState !== "stopped"} onChange={updateCode} onCursorChange={setCursorPosition} onRun={start} onSave={save} />
+          <div className="page-tabs" aria-label="コードページ">
+            <div className="page-tab-list">
+              {pages.map((page) => (
+                <button
+                  className={page.id === activePageId ? "page-tab active" : "page-tab"}
+                  disabled={previewState !== "stopped"}
+                  key={page.id}
+                  onClick={() => selectPage(page.id)}
+                  title={previewState !== "stopped" ? "停止中のみページ変更可能" : page.name}
+                >
+                  <span>{page.name}</span>
+                  {page.id === activePageId ? (
+                    <span
+                      className="page-tab-close"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (previewState === "stopped") setDeletePageDialogOpen(true);
+                      }}
+                      role="button"
+                      aria-label={`${page.name}を削除`}
+                    >
+                      <X size={13} />
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+              <button className="page-tab add" disabled={previewState !== "stopped"} onClick={() => setNewPageDialogOpen(true)} title="ページ追加">
+                <Plus size={16} />
+              </button>
+            </div>
+          </div>
+          <CodeEditor ref={editorRef} value={code} diagnostics={diagnostics} readOnly={previewState !== "stopped" || !hasActivePage} onChange={updateCode} onCursorChange={setCursorPosition} onRun={start} onSave={save} />
           <div className="row-splitter" role="separator" aria-orientation="horizontal" aria-label="エディタと問題パネルの高さを変更" onPointerDown={startDiagnosticsResize} />
           <DiagnosticsPanel diagnostics={diagnostics} onSelect={(item) => editorRef.current?.focusAt(item.line, item.column)} />
         </section>
@@ -384,6 +474,27 @@ export default function Home() {
         onConfirm={confirmResetCode}
         onCancel={() => setResetDialogOpen(false)}
       />
+      <TextInputDialog
+        open={newPageDialogOpen}
+        title="New Page"
+        message="入力した名前がクラス名になります。"
+        label="クラス名"
+        initialValue={`Script${pages.length + 1}`}
+        confirmLabel="追加"
+        onConfirm={addPage}
+        onCancel={() => setNewPageDialogOpen(false)}
+      />
+      <ConfirmDialog
+        open={deletePageDialogOpen}
+        title="Delete Page"
+        message={`「${activePage?.name ?? ""}」を削除。取り消し不可。`}
+        confirmLabel="削除"
+        danger
+        onConfirm={() => {
+          if (activePage) deletePage(activePage.id);
+        }}
+        onCancel={() => setDeletePageDialogOpen(false)}
+      />
     </main>
   );
 }
@@ -399,6 +510,58 @@ function persistCode(code: string) {
   const storage = getBrowserStorage();
   storage.setItem("cgp-ez-code", code);
   storage.setItem("cgp-ez-saved-at", new Date().toISOString());
+}
+
+function persistPages(pages: EditorPage[], activePageId: string) {
+  const storage = getBrowserStorage();
+  storage.setItem("cgp-ez-pages", JSON.stringify(pages));
+  storage.setItem("cgp-ez-active-page-id", activePageId);
+  storage.setItem("cgp-ez-saved-at", new Date().toISOString());
+}
+
+function loadPagesFromStorage() {
+  const storage = getBrowserStorage();
+  const rawPages = storage.getItem("cgp-ez-pages");
+  if (rawPages) {
+    try {
+      const parsed = JSON.parse(rawPages) as EditorPage[];
+      const pages = parsed.filter((page) => typeof page?.id === "string" && typeof page?.name === "string" && typeof page?.code === "string");
+      if (pages.length) return pages;
+    } catch {
+      // Legacy single-code storage is used below.
+    }
+  }
+  const legacyCode = storage.getItem("cgp-ez-code");
+  return legacyCode ? [createEditorPage("Main", legacyCode)] : [];
+}
+
+function createEditorPage(name: string, code: string): EditorPage {
+  return {
+    id: createClientId(),
+    name,
+    code
+  };
+}
+
+function toClassName(name: string, fallbackIndex: number) {
+  const normalized = name.trim().replace(/[^A-Za-z0-9_]/g, "");
+  const withValidHead = /^[A-Za-z_]/.test(normalized) ? normalized : `Script${fallbackIndex}`;
+  return withValidHead || `Script${fallbackIndex}`;
+}
+
+function emptyPageCode(className: string) {
+  return `class ${className}
+{
+    void Start()
+    {
+        
+    }
+
+    void Update()
+    {
+        
+    }
+}`;
 }
 
 function bumpRevision(revisionRef: MutableRefObject<number>) {

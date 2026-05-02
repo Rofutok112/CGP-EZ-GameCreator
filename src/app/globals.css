@@ -302,6 +302,82 @@ a {
   flex-wrap: wrap;
 }
 
+.page-tabs {
+  display: block;
+  padding: 0 8px;
+  background: #252526;
+  border-bottom: 1px solid #333;
+  min-height: 38px;
+}
+
+.page-tab-list {
+  min-width: 0;
+  display: flex;
+  align-items: end;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.page-tab {
+  min-height: 34px;
+  max-width: 180px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 0;
+  background: #2d2d2d;
+  color: #c8c8c8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  justify-content: flex-start;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.page-tab:hover {
+  border-color: transparent;
+  background: #343434;
+}
+
+.page-tab.active {
+  background: var(--code);
+  color: #fff;
+  box-shadow: inset 0 2px 0 #38a3ff;
+}
+
+.page-tab.add {
+  width: 36px;
+  padding: 0;
+  justify-content: center;
+  color: #d4d4d4;
+}
+
+.page-tab span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.page-tab-close {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  color: #bdbdbd;
+  flex: 0 0 auto;
+}
+
+.page-tab-close:hover {
+  background: #3f3f46;
+  color: #fff;
+}
+
+.page-tab:disabled {
+  opacity: 0.58;
+}
+
 .editor-host {
   min-height: 0;
   background: var(--code);
