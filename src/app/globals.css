@@ -674,10 +674,39 @@ canvas {
   width: 42%;
 }
 
+.docs-table td p {
+  margin: 0;
+}
+
 .docs-table code {
   color: #344054;
   font-family: Consolas, "Cascadia Code", "Courier New", monospace;
   font-size: 12px;
+}
+
+.docs-example {
+  margin-top: 8px;
+}
+
+.docs-example summary {
+  width: fit-content;
+  color: var(--accent-strong);
+  cursor: pointer;
+  font-size: 12px;
+  user-select: none;
+}
+
+.docs-example pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--code);
+}
+
+.docs-example pre code {
+  color: #d4d4d4;
+  white-space: pre;
 }
 
 .asset-dialog {
