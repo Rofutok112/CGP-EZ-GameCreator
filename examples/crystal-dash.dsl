@@ -32,13 +32,13 @@ class Main
         message = Create.Text("", 190, 170, 32);
         message.color = "#0f766e";
 
-        AddPlatform(0, 318, 360, 42, "#334155");
-        AddPlatform(410, 286, 190, 28, "#475569");
-        AddPlatform(660, 246, 180, 28, "#475569");
-        AddPlatform(920, 306, 300, 36, "#334155");
-        AddPlatform(1290, 262, 200, 28, "#475569");
-        AddPlatform(1550, 220, 190, 28, "#475569");
-        AddPlatform(1820, 300, 330, 40, "#334155");
+        AddPlatform(180, 339, 360, 42, "#334155");
+        AddPlatform(505, 300, 190, 28, "#475569");
+        AddPlatform(750, 260, 180, 28, "#475569");
+        AddPlatform(1070, 324, 300, 36, "#334155");
+        AddPlatform(1390, 276, 200, 28, "#475569");
+        AddPlatform(1645, 234, 190, 28, "#475569");
+        AddPlatform(1985, 320, 330, 40, "#334155");
 
         AddCoin(470, 246);
         AddCoin(720, 206);
@@ -51,10 +51,10 @@ class Main
         AddCoin(1690, 180);
         AddCoin(1970, 260);
 
-        AddSpike(340, 292);
-        AddSpike(610, 260);
-        AddSpike(1225, 280);
-        AddSpike(1760, 194);
+        AddSpike(354, 305);
+        AddSpike(624, 273);
+        AddSpike(1239, 293);
+        AddSpike(1774, 207);
 
         drone1 = Create.Box(690, 210, 30, 24);
         drone1.color = "#ef4444";
@@ -152,9 +152,9 @@ class Main
         {
             if (player.Touch(platforms[i]) && player.vy >= 0)
             {
-                if (player.y + player.height <= platforms[i].y + 24)
+                if (player.y < platforms[i].y)
                 {
-                    player.y = platforms[i].y - player.height;
+                    player.y = platforms[i].y - platforms[i].height / 2 - player.height / 2;
                     player.vy = 0;
                     grounded = true;
                 }

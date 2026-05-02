@@ -96,6 +96,13 @@ class Main
 
 `GameObject` と `Text` は作成後に自動描画されます。不要になったら `Destroy()` で削除できます。
 
+座標の基準:
+
+- `GameObject.x` / `GameObject.y`: オブジェクトの中心
+- `Text.x` / `Text.y`: テキストの左上
+- `Create.Box` / `Create.Circle` / `Create.Sprite`: `x, y` は中心座標
+- `Create.Text`: `x, y` は左上座標
+
 ## 画像素材
 
 生徒ごとに `public/assets/<clientId>/` が割り当てられます。画面上の「ファイル」から画像や音声を追加できます。

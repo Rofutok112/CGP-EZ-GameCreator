@@ -27,7 +27,9 @@ class MockHost implements RuntimeHost {
   }
 
   touch(a: RuntimeEntity, b: RuntimeEntity): boolean {
-    return a.visible && b.visible && !a.destroyed && !b.destroyed && a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+    const ab = bounds(a);
+    const bb = bounds(b);
+    return a.visible && b.visible && !a.destroyed && !b.destroyed && ab.left < bb.right && ab.right > bb.left && ab.top < bb.bottom && ab.bottom > bb.top;
   }
 
   keyDown(): boolean {
@@ -57,6 +59,13 @@ class MockHost implements RuntimeHost {
     this.entities.push(entity);
     return entity;
   }
+}
+
+function bounds(entity: RuntimeEntity) {
+  if (entity.kind === "Text") {
+    return { left: entity.x, top: entity.y, right: entity.x + entity.width, bottom: entity.y + entity.height };
+  }
+  return { left: entity.x - entity.width / 2, top: entity.y - entity.height / 2, right: entity.x + entity.width / 2, bottom: entity.y + entity.height / 2 };
 }
 
 describe("DSL", () => {
@@ -336,6 +345,29 @@ describe("DSL", () => {
     const instance = compiled.createInstance(host);
     instance.start();
     expect(host.entities[0]).toMatchObject({ shape: "sprite", imageName: "hero", width: 48, height: 32, flipX: true });
+  });
+
+  it("treats GameObject x/y as center for wall checks", () => {
+    const code = `class Main
+{
+    GameObject box;
+
+    void Start()
+    {
+        box = Create.Box(10, 100, 20, 20);
+        if (box.TouchWall())
+        {
+            game.Reset();
+        }
+    }
+
+    void Update()
+    {
+    }
+}`;
+    const host = new MockHost();
+    compileDsl(code).createInstance(host).start();
+    expect(host.resetRequested).toBe(true);
   });
 
   it("plays sounds with optional volume", () => {

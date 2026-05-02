@@ -161,12 +161,12 @@ const classTypes = new Set([
 const keywords = new Set(["class", "public", "private", "static", "if", "else", "for", "foreach", "in", "new", "true", "false", "return"]);
 
 const apiDocs: Record<string, string> = {
-  "Create.Box": "Create.Box(x, y, width, height)",
-  "Create.Circle": "Create.Circle(x, y, radius)",
-  "Create.Sprite": "Create.Sprite(name, x, y, width, height)",
+  "Create.Box": "Create.Box(centerX, centerY, width, height)",
+  "Create.Circle": "Create.Circle(centerX, centerY, radius)",
+  "Create.Sprite": "Create.Sprite(name, centerX, centerY, width, height)",
   "SetSprite": "obj.SetSprite(name)",
   "flipX": "obj.flipX = true",
-  "Create.Text": "Create.Text(value, x, y, size)",
+  "Create.Text": "Create.Text(value, left, top, size)",
   "Touch": "bool Touch(other)",
   "TouchWall": "bool TouchWall()",
   "Destroy": "描画 / 当たり判定から削除",

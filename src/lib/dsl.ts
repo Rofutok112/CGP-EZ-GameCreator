@@ -1561,7 +1561,10 @@ export class DslInstance {
   private callEntity(entity: RuntimeEntity, method: string, args: RuntimeValue[], token: Token): RuntimeValue {
     assertAlive(entity, token);
     if (method === "Touch") return this.host.touch(entity, this.expectEntity(args[0], token));
-    if (method === "TouchWall") return entity.x <= 0 || entity.y <= 0 || entity.x + entity.width >= this.host.width || entity.y + entity.height >= this.host.height;
+    if (method === "TouchWall") {
+      const bounds = entityBounds(entity);
+      return bounds.left <= 0 || bounds.top <= 0 || bounds.right >= this.host.width || bounds.bottom >= this.host.height;
+    }
     if (method === "Hide") {
       entity.visible = false;
       return null;
@@ -1622,6 +1625,23 @@ function isBuiltin(value: RuntimeValue): value is BuiltinRef {
 
 function assertAlive(entity: RuntimeEntity, token: Token) {
   if (entity.destroyed) throw diagnostic(token, "Destroy() されたオブジェクトにはアクセスできません。リストから Remove するか、新しく作り直してください。");
+}
+
+function entityBounds(entity: RuntimeEntity) {
+  if (entity.kind === "Text") {
+    return {
+      left: entity.x,
+      top: entity.y,
+      right: entity.x + entity.width,
+      bottom: entity.y + entity.height
+    };
+  }
+  return {
+    left: entity.x - entity.width / 2,
+    top: entity.y - entity.height / 2,
+    right: entity.x + entity.width / 2,
+    bottom: entity.y + entity.height / 2
+  };
 }
 
 function toNumber(value: RuntimeValue, token: Token): number {

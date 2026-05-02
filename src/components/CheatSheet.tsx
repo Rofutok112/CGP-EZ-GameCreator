@@ -19,16 +19,16 @@ const groups = [
   {
     title: "作成",
     items: [
-      { name: "Create.Box(x, y, width, height)", description: "四角形のGameObjectを作る" },
-      { name: "Create.Circle(x, y, radius)", description: "円のGameObjectを作る" },
-      { name: "Create.Sprite(name, x, y, width, height)", description: "assets内の画像を指定サイズのGameObjectとして作る。例: \"characters/player\"" },
-      { name: "Create.Text(value, x, y, size)", description: "画面固定のTextを作る" }
+      { name: "Create.Box(x, y, width, height)", description: "x/yは中心" },
+      { name: "Create.Circle(x, y, radius)", description: "x/yは中心" },
+      { name: "Create.Sprite(name, x, y, width, height)", description: "x/yは中心。サイズは画像ではなくwidth/height基準" },
+      { name: "Create.Text(value, x, y, size)", description: "x/yは左上" }
     ]
   },
   {
     title: "GameObject",
     items: [
-      { name: "x / y", description: "位置" },
+      { name: "x / y", description: "中心座標" },
       { name: "vx / vy", description: "1フレームごとの移動量" },
       { name: "width / height", description: "大きさ" },
       { name: "visible", description: "表示されているか" },
@@ -46,7 +46,7 @@ const groups = [
   {
     title: "Text",
     items: [
-      { name: "x / y", description: "画面上の固定位置" },
+      { name: "x / y", description: "左上座標" },
       { name: "value", description: "表示する文字" },
       { name: "size", description: "文字サイズ" },
       { name: "color", description: "文字色" },

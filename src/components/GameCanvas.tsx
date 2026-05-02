@@ -91,7 +91,9 @@ class CanvasHost implements RuntimeHost {
 
   touch(a: RuntimeEntity, b: RuntimeEntity): boolean {
     if (!a.visible || !b.visible || a.destroyed || b.destroyed) return false;
-    return a.x <= b.x + b.width && a.x + a.width >= b.x && a.y <= b.y + b.height && a.y + a.height >= b.y;
+    const ab = entityBounds(a);
+    const bb = entityBounds(b);
+    return ab.left <= bb.right && ab.right >= bb.left && ab.top <= bb.bottom && ab.bottom >= bb.top;
   }
 
   keyDown(key: string): boolean {
@@ -183,10 +185,11 @@ class CanvasHost implements RuntimeHost {
         this.drawSprite(ctx, entity);
       } else if (entity.shape === "circle") {
         ctx.beginPath();
-        ctx.arc(entity.x + entity.width / 2, entity.y + entity.height / 2, entity.width / 2, 0, Math.PI * 2);
+        ctx.arc(entity.x, entity.y, entity.width / 2, 0, Math.PI * 2);
         ctx.fill();
       } else {
-        ctx.fillRect(entity.x, entity.y, entity.width, entity.height);
+        const bounds = entityBounds(entity);
+        ctx.fillRect(bounds.left, bounds.top, entity.width, entity.height);
       }
     }
     ctx.restore();
@@ -195,6 +198,7 @@ class CanvasHost implements RuntimeHost {
       if (!entity.visible || entity.destroyed || entity.kind !== "Text") continue;
       ctx.fillStyle = entity.color || "#111827";
       ctx.font = `${entity.size ?? 20}px Arial, sans-serif`;
+      ctx.textBaseline = "top";
       ctx.fillText(entity.value ?? "", entity.x, entity.y);
       entity.width = (entity.value ?? "").length * (entity.size ?? 20) * 0.6;
       entity.height = entity.size ?? 20;
@@ -212,8 +216,10 @@ class CanvasHost implements RuntimeHost {
     ctx.fillStyle = "#667085";
     ctx.font = "20px Arial, sans-serif";
     ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
     ctx.fillText(message, WIDTH / 2, HEIGHT / 2);
     ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
   }
 
   private add(base: Omit<RuntimeEntity, "id" | "vx" | "vy" | "visible" | "destroyed" | "flipX">): RuntimeEntity {
@@ -309,25 +315,27 @@ class CanvasHost implements RuntimeHost {
   private drawSprite(ctx: CanvasRenderingContext2D, entity: RuntimeEntity) {
     if (entity.imageName && !this.images.has(entity.imageName)) this.loadImage(entity.imageName);
     const image = entity.imageName ? this.images.get(entity.imageName) : undefined;
+    const bounds = entityBounds(entity);
     if (image?.complete && image.naturalWidth > 0) {
       if (entity.flipX) {
         ctx.save();
-        ctx.translate(entity.x + entity.width, entity.y);
+        ctx.translate(bounds.left + entity.width, bounds.top);
         ctx.scale(-1, 1);
         ctx.drawImage(image, 0, 0, entity.width, entity.height);
         ctx.restore();
       } else {
-        ctx.drawImage(image, entity.x, entity.y, entity.width, entity.height);
+        ctx.drawImage(image, bounds.left, bounds.top, entity.width, entity.height);
       }
       return;
     }
     ctx.fillStyle = entity.color || "#94a3b8";
-    ctx.fillRect(entity.x, entity.y, entity.width, entity.height);
+    ctx.fillRect(bounds.left, bounds.top, entity.width, entity.height);
     ctx.strokeStyle = "#475467";
-    ctx.strokeRect(entity.x + 0.5, entity.y + 0.5, entity.width - 1, entity.height - 1);
+    ctx.strokeRect(bounds.left + 0.5, bounds.top + 0.5, entity.width - 1, entity.height - 1);
     ctx.fillStyle = "#344054";
     ctx.font = "10px Arial, sans-serif";
-    ctx.fillText(entity.imageName ?? "sprite", entity.x + 4, entity.y + Math.min(entity.height - 4, 14));
+    ctx.textBaseline = "top";
+    ctx.fillText(entity.imageName ?? "sprite", bounds.left + 4, bounds.top + 4);
   }
 }
 
@@ -378,6 +386,23 @@ function assetUrls(name: string, scope: string, extensions: string[]) {
 function assetUrl(fileName: string, scope: string) {
   const encoded = fileName.split("/").map(encodeURIComponent).join("/");
   return scope ? `${basePath}/assets/${encodeURIComponent(scope)}/${encoded}` : `${basePath}/assets/${encoded}`;
+}
+
+function entityBounds(entity: RuntimeEntity) {
+  if (entity.kind === "Text") {
+    return {
+      left: entity.x,
+      top: entity.y,
+      right: entity.x + entity.width,
+      bottom: entity.y + entity.height
+    };
+  }
+  return {
+    left: entity.x - entity.width / 2,
+    top: entity.y - entity.height / 2,
+    right: entity.x + entity.width / 2,
+    bottom: entity.y + entity.height / 2
+  };
 }
 
 export function GameCanvas({ code, control, sessionId, assetScope = "", onDiagnostics, onStop }: GameCanvasProps) {
