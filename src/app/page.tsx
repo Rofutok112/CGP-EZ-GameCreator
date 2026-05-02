@@ -420,7 +420,17 @@ export default function Home() {
               </button>
             </div>
           </div>
-          <CodeEditor ref={editorRef} value={code} diagnostics={diagnostics} readOnly={previewState !== "stopped" || !hasActivePage} onChange={updateCode} onCursorChange={setCursorPosition} onRun={start} onSave={save} />
+          {hasActivePage ? (
+            <CodeEditor ref={editorRef} value={code} diagnostics={diagnostics} readOnly={previewState !== "stopped"} onChange={updateCode} onCursorChange={setCursorPosition} onRun={start} onSave={save} />
+          ) : (
+            <section className="empty-script-state">
+              <h2>スクリプトを作りましょう</h2>
+              <p>上の + から新しいスクリプトを追加できます。</p>
+              <button className="primary" onClick={() => setNewPageDialogOpen(true)}>
+                <Plus size={16} /> スクリプト作成
+              </button>
+            </section>
+          )}
           <div className="row-splitter" role="separator" aria-orientation="horizontal" aria-label="エディタと問題パネルの高さを変更" onPointerDown={startDiagnosticsResize} />
           <DiagnosticsPanel diagnostics={diagnostics} onSelect={(item) => editorRef.current?.focusAt(item.line, item.column)} />
         </section>
@@ -490,6 +500,7 @@ export default function Home() {
         message={`「${activePage?.name ?? ""}」を削除。取り消し不可。`}
         confirmLabel="削除"
         danger
+        hideCloseButton
         onConfirm={() => {
           if (activePage) deletePage(activePage.id);
         }}

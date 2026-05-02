@@ -10,6 +10,7 @@ type ConfirmDialogProps = {
   confirmLabel?: string;
   cancelLabel?: string;
   danger?: boolean;
+  hideCloseButton?: boolean;
   onConfirm(): void;
   onCancel(): void;
 };
@@ -26,7 +27,7 @@ type TextInputDialogProps = {
   onCancel(): void;
 };
 
-export function ConfirmDialog({ open, title, message, confirmLabel = "OK", cancelLabel = "キャンセル", danger = false, onConfirm, onCancel }: ConfirmDialogProps) {
+export function ConfirmDialog({ open, title, message, confirmLabel = "OK", cancelLabel = "キャンセル", danger = false, hideCloseButton = false, onConfirm, onCancel }: ConfirmDialogProps) {
   if (!open) return null;
 
   return (
@@ -40,9 +41,11 @@ export function ConfirmDialog({ open, title, message, confirmLabel = "OK", cance
             <h2 id="confirm-dialog-title">{title}</h2>
             <p>{message}</p>
           </div>
-          <button className="icon-button" onClick={onCancel} aria-label="閉じる">
-            <X size={16} />
-          </button>
+          {hideCloseButton ? null : (
+            <button className="icon-button" onClick={onCancel} aria-label="閉じる">
+              <X size={16} />
+            </button>
+          )}
         </header>
         <footer className="app-dialog-actions">
           <button onClick={onCancel}>{cancelLabel}</button>
