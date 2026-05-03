@@ -174,9 +174,10 @@ export function analyzeDsl(source: string): DslDiagnostic[] {
     const ast = parseSource(source);
     return uniqueDiagnostics([...surfaceDiagnostics, ...new StaticAnalyzer(ast).analyze()]);
   } catch (error) {
-    if (error instanceof DslError) return uniqueDiagnostics([...surfaceDiagnostics, error.diagnostic]);
+    if (error instanceof DslError) return uniqueDiagnostics([...surfaceDiagnostics, error.diagnostic, ...collectLooseDiagnostics(source)]);
     return uniqueDiagnostics([
       ...surfaceDiagnostics,
+      ...collectLooseDiagnostics(source),
       {
         severity: "error",
         line: 1,
@@ -191,7 +192,7 @@ export function compileDsl(source: string): CompiledProgram {
   const diagnostics: DslDiagnostic[] = collectSurfaceDiagnostics(source);
   if (diagnostics.length > 0) {
     return {
-      diagnostics,
+      diagnostics: uniqueDiagnostics([...diagnostics, ...collectLooseDiagnostics(source)]),
       createInstance(host) {
         return new DslInstance({ fields: [], start: emptyBlock(), update: emptyBlock(), methods: new Map() }, host);
       }
@@ -225,7 +226,7 @@ export function compileDsl(source: string): CompiledProgram {
       });
     }
     return {
-      diagnostics,
+      diagnostics: uniqueDiagnostics([...diagnostics, ...collectLooseDiagnostics(source)]),
       createInstance(host) {
         return new DslInstance({ fields: [], start: emptyBlock(), update: emptyBlock(), methods: new Map() }, host);
       }
@@ -851,6 +852,150 @@ function collectSurfaceDiagnostics(source: string): DslDiagnostic[] {
   }
 
   return uniqueDiagnostics(diagnostics);
+}
+
+function collectLooseDiagnostics(source: string): DslDiagnostic[] {
+  const diagnostics: DslDiagnostic[] = [];
+  const masked = maskCommentsAndStringsForDiagnostics(source);
+  const declared = collectLooseSymbols(masked);
+  const knownGlobals = new Set(["Create", "Input", "Time", "Random", "Math", "Game", "Sound", "Camera"]);
+  const callableMethods = new Set([...declared.methods.keys(), "Start", "Update"]);
+
+  for (const match of masked.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\s*=/g)) {
+    const name = match[1];
+    if (isKeywordLike(name)) continue;
+    if (!declared.symbols.has(name) && !knownGlobals.has(name)) {
+      diagnostics.push(looseDiagnosticAt(source, match.index ?? 0, `${name} は宣言されていません。先にフィールドまたは変数として宣言してください。`));
+    }
+  }
+
+  for (const match of masked.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
+    const name = match[1];
+    if (isKeywordLike(name)) continue;
+    const before = previousSignificantChar(masked, match.index ?? 0);
+    if (before === ".") continue;
+    if (!callableMethods.has(name)) {
+      diagnostics.push(looseDiagnosticAt(source, match.index ?? 0, `${name} という関数は定義されていません。`));
+    }
+  }
+
+  for (const match of masked.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*(?=\()/g)) {
+    const owner = match[1];
+    const member = match[2];
+    const ownerType = declared.symbols.get(owner) ?? (knownGlobals.has(owner) ? owner : undefined);
+    if (!ownerType) {
+      diagnostics.push(looseDiagnosticAt(source, match.index ?? 0, `${owner} は宣言されていません。`));
+      continue;
+    }
+    const allowed = looseMethodsFor(ownerType);
+    if (allowed && !allowed.has(member)) {
+      diagnostics.push(looseDiagnosticAt(source, (match.index ?? 0) + owner.length + 1, `${ownerType} に ${member} というメソッドはありません。`));
+    }
+  }
+
+  for (const match of masked.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\b(?!\s*\()/g)) {
+    const owner = match[1];
+    const member = match[2];
+    const ownerType = declared.symbols.get(owner) ?? (knownGlobals.has(owner) ? owner : undefined);
+    if (!ownerType) continue;
+    const allowed = loosePropertiesFor(ownerType);
+    if (allowed && !allowed.has(member)) {
+      diagnostics.push(looseDiagnosticAt(source, (match.index ?? 0) + owner.length + 1, `${ownerType} に ${member} というプロパティはありません。`));
+    }
+  }
+
+  return uniqueDiagnostics(diagnostics);
+}
+
+function collectLooseSymbols(masked: string) {
+  const symbols = new Map<string, string>();
+  const methods = new Map<string, string>();
+  const typePattern = String.raw`(?:int|float|bool|string|GameObject|UIText|UIBox|UICircle|UIButton|List\s*<\s*(?:int|float|bool|string|GameObject|UIText|UIBox|UICircle|UIButton)\s*>)`;
+  const declarationPattern = new RegExp(String.raw`\b(${typePattern})\s+([A-Za-z_][A-Za-z0-9_]*)\b`, "g");
+  for (const match of masked.matchAll(declarationPattern)) {
+    const type = normalizeLooseType(match[1]);
+    const name = match[2];
+    const after = masked.slice((match.index ?? 0) + match[0].length).trimStart();
+    if (after.startsWith("(")) methods.set(name, type);
+    else symbols.set(name, type);
+  }
+  for (const match of masked.matchAll(/\bvoid\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
+    methods.set(match[1], "void");
+  }
+  return { symbols, methods };
+}
+
+function normalizeLooseType(type: string) {
+  return type.replace(/\s+/g, "");
+}
+
+function maskCommentsAndStringsForDiagnostics(source: string) {
+  let result = "";
+  let stringOpen = false;
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i];
+    const next = source[i + 1];
+    if (!stringOpen && char === "/" && next === "/") {
+      while (i < source.length && source[i] !== "\n") {
+        result += " ";
+        i += 1;
+      }
+      if (i < source.length) result += source[i];
+      continue;
+    }
+    if (char === "\"" && source[i - 1] !== "\\") {
+      stringOpen = !stringOpen;
+      result += " ";
+      continue;
+    }
+    result += stringOpen && char !== "\n" ? " " : char;
+  }
+  return result;
+}
+
+function looseMethodsFor(type: string): Set<string> | undefined {
+  if (type === "Create") return new Set(["Box", "Circle", "Sprite", "UIText", "UIBox", "UICircle", "UIButton"]);
+  if (type === "Input") return new Set(["GetKey", "GetKeyDown"]);
+  if (type === "Random") return new Set(["Range", "Chance"]);
+  if (type === "Math") return new Set(["Round", "Fixed", "Floor", "Ceil"]);
+  if (type === "Game") return new Set(["Reset"]);
+  if (type === "Sound") return new Set(["Play"]);
+  if (type === "Camera") return new Set(["Follow"]);
+  if (type === "GameObject") return new Set(["Touch", "TouchWall", "Hide", "Show", "Move", "Destroy", "SetSprite"]);
+  if (type === "UIText" || type === "UIBox" || type === "UICircle") return new Set(["Hide", "Show", "Move", "Destroy"]);
+  if (type === "UIButton") return new Set(["Clicked", "Down", "Hide", "Show", "Move", "Destroy"]);
+  if (type.startsWith("List<")) return new Set(["Add", "Remove", "Clear"]);
+  if (type === "int" || type === "float") return new Set(["ToString"]);
+  return undefined;
+}
+
+function loosePropertiesFor(type: string): Set<string> | undefined {
+  if (type === "Time") return new Set(["time", "deltaTime", "frameCount"]);
+  if (type === "Input") return new Set(["mouseX", "mouseY"]);
+  if (type === "GameObject") return new Set(["x", "y", "vx", "vy", "width", "height", "visible", "color", "flipX"]);
+  if (type === "UIText") return new Set(["x", "y", "value", "size", "color", "visible"]);
+  if (type === "UIBox" || type === "UICircle") return new Set(["x", "y", "width", "height", "visible", "color"]);
+  if (type === "UIButton") return new Set(["x", "y", "width", "height", "value", "color", "textColor", "visible"]);
+  if (type.startsWith("List<")) return new Set(["Count"]);
+  if (type === "string") return new Set(["Length"]);
+  return undefined;
+}
+
+function previousSignificantChar(text: string, index: number) {
+  for (let i = index - 1; i >= 0; i -= 1) {
+    if (!/\s/.test(text[i])) return text[i];
+  }
+  return "";
+}
+
+function isKeywordLike(name: string) {
+  return ["if", "for", "foreach", "while", "return", "new", "void", "class", "else"].includes(name);
+}
+
+function looseDiagnosticAt(source: string, index: number, message: string): DslDiagnostic {
+  const before = source.slice(0, index);
+  const lines = before.split(/\r?\n/);
+  return { severity: "error", line: lines.length, column: lines.at(-1)!.length + 1, message };
 }
 
 function stripLineComment(line: string): string {

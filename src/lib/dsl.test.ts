@@ -222,6 +222,33 @@ describe("DSL", () => {
     expect(diagnostics.some((item) => item.message.includes(") が足りません"))).toBe(true);
   });
 
+  it("keeps reporting loose static diagnostics when parsing stops", () => {
+    const diagnostics = analyzeDsl(`class Main
+{
+    GameObject player
+    UIButton retry;
+
+    void Start()
+    {
+        player = Create.Box(100, 160, 36, 36);
+        retry = Create.UIButton("Retry", 20, 20, 90, 36
+        player.Fly();
+        retry.BadClick();
+        missing = 1;
+    }
+
+    void Update()
+    {
+    }
+}`);
+
+    expect(diagnostics.some((item) => item.message.includes(";"))).toBe(true);
+    expect(diagnostics.some((item) => item.message.includes(") が足りません"))).toBe(true);
+    expect(diagnostics.some((item) => item.message.includes("Fly"))).toBe(true);
+    expect(diagnostics.some((item) => item.message.includes("BadClick"))).toBe(true);
+    expect(diagnostics.some((item) => item.message.includes("missing"))).toBe(true);
+  });
+
   it("supports user-defined void functions with parameters", () => {
     const code = `class Main
 {
