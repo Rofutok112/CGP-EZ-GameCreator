@@ -36,19 +36,19 @@ block.color = "green";`
   },
   {
     title: "文字を作る",
-    code: `Text label;
-label = Create.Text("Hello", 20, 20, 22);
+    code: `UIText label;
+label = Create.UIText("Hello", 20, 20, 22);
 label.color = "black";`
   },
   {
     title: "左右移動",
     code: `void MovePlayer(float moveSpeed)
 {
-    if (key.Down("A"))
+    if (Input.GetKey("A"))
     {
         player.vx = -moveSpeed;
     }
-    else if (key.Down("D"))
+    else if (Input.GetKey("D"))
     {
         player.vx = moveSpeed;
     }

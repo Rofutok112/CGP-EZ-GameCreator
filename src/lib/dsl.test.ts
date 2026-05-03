@@ -22,8 +22,20 @@ class MockHost implements RuntimeHost {
     return this.add({ kind: "GameObject", shape: "sprite", imageName: name, x, y, width, height, color: "gray" });
   }
 
-  createText(value: string, x: number, y: number, size = 20): RuntimeEntity {
-    return this.add({ kind: "Text", x, y, width: 100, height: size, value, size, color: "black" });
+  createUIText(value: string, x: number, y: number, size = 20): RuntimeEntity {
+    return this.add({ kind: "UIText", x, y, width: 100, height: size, value, size, color: "black" });
+  }
+
+  createUIBox(x: number, y: number, width: number, height: number): RuntimeEntity {
+    return this.add({ kind: "UIBox", shape: "box", x, y, width, height, color: "gray" });
+  }
+
+  createUICircle(x: number, y: number, radius: number): RuntimeEntity {
+    return this.add({ kind: "UICircle", shape: "circle", x, y, width: radius * 2, height: radius * 2, radius, color: "gray" });
+  }
+
+  createUIButton(value: string, x: number, y: number, width: number, height: number): RuntimeEntity {
+    return this.add({ kind: "UIButton", shape: "button", x, y, width, height, value, size: 16, color: "teal", textColor: "white" });
   }
 
   touch(a: RuntimeEntity, b: RuntimeEntity): boolean {
@@ -38,6 +50,18 @@ class MockHost implements RuntimeHost {
 
   keyPressed(): boolean {
     return false;
+  }
+
+  buttonDown(): boolean {
+    return false;
+  }
+
+  buttonClicked(): boolean {
+    return true;
+  }
+
+  getMouse() {
+    return { x: 123, y: 45 };
   }
 
   playSound(name: string, volume?: number): void {
@@ -62,7 +86,7 @@ class MockHost implements RuntimeHost {
 }
 
 function bounds(entity: RuntimeEntity) {
-  if (entity.kind === "Text") {
+  if (entity.kind === "UIText" || entity.kind === "UIBox" || entity.kind === "UICircle" || entity.kind === "UIButton") {
     return { left: entity.x, top: entity.y, right: entity.x + entity.width, bottom: entity.y + entity.height };
   }
   return { left: entity.x - entity.width / 2, top: entity.y - entity.height / 2, right: entity.x + entity.width / 2, bottom: entity.y + entity.height / 2 };
@@ -179,13 +203,13 @@ describe("DSL", () => {
     const diagnostics = analyzeDsl(`class Main
 {
     GameObject player
-    Text scoreText
+    UIText scoreText
     int score = 0;
 
     void Start()
     {
         player = Create.Box(100, 160, 36, 36);
-        scoreText = Create.Text("Score: 0", 20, 24, 22
+        scoreText = Create.UIText("Score: 0", 20, 24, 22
         scoreText.color = "black";
     }
 
@@ -232,12 +256,12 @@ describe("DSL", () => {
   it("supports Math rounding helpers and float suffix literals", () => {
     const code = `class Main
 {
-    Text label;
+    UIText label;
     float value = 2f;
 
     void Start()
     {
-        label = Create.Text("", 10, 10);
+        label = Create.UIText("", 10, 10);
     }
 
     void Update()
@@ -258,12 +282,12 @@ describe("DSL", () => {
   it("supports C#-style number ToString fixed format", () => {
     const code = `class Main
 {
-    Text label;
+    UIText label;
     float value = 3.14159f;
 
     void Start()
     {
-        label = Create.Text("", 10, 10);
+        label = Create.UIText("", 10, 10);
     }
 
     void Update()
@@ -280,14 +304,14 @@ describe("DSL", () => {
     expect(host.entities[0].value).toBe("3.14");
   });
 
-  it("requires explicit string conversion for Text.value", () => {
+  it("requires explicit string conversion for UIText.value", () => {
     const diagnostics = analyzeDsl(`class Main
 {
-    Text label;
+    UIText label;
 
     void Start()
     {
-        label = Create.Text("", 10, 10);
+        label = Create.UIText("", 10, 10);
     }
 
     void Update()
@@ -371,7 +395,7 @@ describe("DSL", () => {
         box = Create.Box(10, 100, 20, 20);
         if (box.TouchWall())
         {
-            game.Reset();
+            Game.Reset();
         }
     }
 
@@ -389,8 +413,8 @@ describe("DSL", () => {
 {
     void Start()
     {
-        sound.Play("coin");
-        sound.Play("jump", 0.25f);
+        Sound.Play("coin");
+        Sound.Play("jump", 0.25f);
     }
 
     void Update()
@@ -408,15 +432,152 @@ describe("DSL", () => {
     ]);
   });
 
-  it("supports ++ and -- in loops", () => {
+  it("creates screen UI objects and handles button clicks", () => {
     const code = `class Main
 {
-    Text label;
+    UIText label;
+    UIBox panel;
+    UICircle icon;
+    UIButton retry;
     int count = 0;
 
     void Start()
     {
+        panel = Create.UIBox(20, 20, 180, 80);
+        icon = Create.UICircle(32, 32, 12);
+        label = Create.UIText("Ready", 52, 32, 20);
+        retry = Create.UIButton("Retry", 220, 20, 90, 36);
+    }
+
+    void Update()
+    {
+        if (retry.Clicked())
+        {
+            count++;
+            label.value = "Clicked: " + count;
+        }
+    }
+}`;
+    const compiled = compileDsl(code);
+    expect(compiled.diagnostics).toEqual([]);
+    const host = new MockHost();
+    const instance = compiled.createInstance(host);
+    instance.start();
+    instance.update();
+    expect(host.entities.map((entity) => entity.kind)).toEqual(["UIBox", "UICircle", "UIText", "UIButton"]);
+    expect(host.entities[2].value).toBe("Clicked: 1");
+  });
+
+  it("uses Unity-style Input methods and rejects old implicit variables", () => {
+    const code = `class Main
+{
+    UIText label;
+
+    void Start()
+    {
+        label = Create.UIText("", 20, 20, 20);
+    }
+
+    void Update()
+    {
+        if (Input.GetKey("A"))
+        {
+            label.value = "hold";
+        }
+        if (Input.GetKeyDown("Space"))
+        {
+            label.value = "down";
+        }
+    }
+}`;
+    const compiled = compileDsl(code);
+    expect(compiled.diagnostics).toEqual([]);
+
+    const oldDiagnostics = analyzeDsl(`class Main
+{
+    void Start()
+    {
+        key.Down("A");
+        game.Reset();
+        sound.Play("coin");
+        camera.Follow(Create.Box(100, 100, 20, 20));
+    }
+
+    void Update()
+    {
+    }
+}`);
+    expect(oldDiagnostics.some((item) => item.message.includes("key は宣言されていません"))).toBe(true);
+    expect(oldDiagnostics.some((item) => item.message.includes("game は宣言されていません"))).toBe(true);
+    expect(oldDiagnostics.some((item) => item.message.includes("sound は宣言されていません"))).toBe(true);
+    expect(oldDiagnostics.some((item) => item.message.includes("camera は宣言されていません"))).toBe(true);
+  });
+
+  it("exposes mouse position through Input", () => {
+    const code = `class Main
+{
+    UIBox cursor;
+
+    void Start()
+    {
+        cursor = Create.UIBox(0, 0, 8, 8);
+    }
+
+    void Update()
+    {
+        cursor.Move(Input.mouseX, Input.mouseY);
+    }
+}`;
+    const compiled = compileDsl(code);
+    expect(compiled.diagnostics).toEqual([]);
+    const host = new MockHost();
+    const instance = compiled.createInstance(host);
+    instance.start();
+    instance.update();
+    expect(host.entities[0]).toMatchObject({ x: 123, y: 45 });
+  });
+
+  it("rejects the removed Text type and Create.Text", () => {
+    const typeDiagnostics = analyzeDsl(`class Main
+{
+    Text label;
+
+    void Start()
+    {
         label = Create.Text("", 20, 20, 20);
+    }
+
+    void Update()
+    {
+    }
+}`);
+    expect(typeDiagnostics.some((item) => item.message.includes("型名が必要"))).toBe(true);
+
+    const createDiagnostics = analyzeDsl(`class Main
+{
+    UIText label;
+
+    void Start()
+    {
+        label = Create.Text("", 20, 20, 20);
+    }
+
+    void Update()
+    {
+    }
+}`);
+    expect(createDiagnostics.some((item) => item.message.includes("Create.Text は存在しません"))).toBe(true);
+  });
+
+  it("supports ++ and -- in loops", () => {
+    const code = `class Main
+{
+    UIText label;
+    int count = 0;
+
+    void Start()
+    {
+        label = Create.UIText("", 20, 20, 20);
         for (int i = 0; i < 3; i++)
         {
             count++;
@@ -439,16 +600,44 @@ describe("DSL", () => {
   it("allows string Length and index access", () => {
     const code = `class Main
 {
-    Text label;
+    UIText label;
     string text = "abc";
     string result = "";
 
     void Start()
     {
-        label = Create.Text("", 20, 20, 20);
+        label = Create.UIText("", 20, 20, 20);
         for (int i = 0; i < text.Length; i++)
         {
             result = result + text[i];
+        }
+        label.value = result;
+    }
+
+    void Update()
+    {
+    }
+}`;
+    const compiled = compileDsl(code);
+    expect(compiled.diagnostics).toEqual([]);
+    const host = new MockHost();
+    compiled.createInstance(host).start();
+    expect(host.entities[0].value).toBe("abc");
+  });
+
+  it("allows foreach over strings", () => {
+    const code = `class Main
+{
+    UIText label;
+    string text = "abc";
+    string result = "";
+
+    void Start()
+    {
+        label = Create.UIText("", 20, 20, 20);
+        foreach (string ch in text)
+        {
+            result = result + ch;
         }
         label.value = result;
     }
@@ -471,7 +660,7 @@ describe("DSL", () => {
 
     void Start()
     {
-        sound.Play("jump", 0.5);
+        Sound.Play("jump", 0.5);
     }
 
     void Update()
@@ -486,7 +675,7 @@ describe("DSL", () => {
 
     void Start()
     {
-        sound.Play("jump", 0.5f);
+        Sound.Play("jump", 0.5f);
     }
 
     void Update()

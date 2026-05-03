@@ -45,6 +45,7 @@ export default function Home() {
   const [splitRatio, setSplitRatio] = useState(0.7);
   const [diagnosticsRatio, setDiagnosticsRatio] = useState(0.24);
   const [previewMaximized, setPreviewMaximized] = useState(false);
+  const [showCoordinates, setShowCoordinates] = useState(false);
   const [docsOpen, setDocsOpen] = useState(false);
   const [assetsOpen, setAssetsOpen] = useState(false);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
@@ -451,9 +452,12 @@ export default function Home() {
                 {previewMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                 {previewMaximized ? "戻す" : "最大化"}
               </button>
+              <button className={showCoordinates ? "primary" : ""} onClick={() => setShowCoordinates((value) => !value)} title="座標を表示">
+                座標
+              </button>
             </div>
           </div>
-          <GameCanvas code={previewCode} control={previewState} sessionId={sessionId} assetScope={clientId} onDiagnostics={setRuntimeDiagnostics} onStop={() => setPreviewState("stopped")} />
+          <GameCanvas code={previewCode} control={previewState} sessionId={sessionId} assetScope={clientId} showCoordinates={showCoordinates} onDiagnostics={setRuntimeDiagnostics} onStop={() => setPreviewState("stopped")} />
           {isStaticExport ? (
             <section className="submit-box">
               <h2>Static Preview</h2>

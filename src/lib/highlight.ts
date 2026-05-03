@@ -4,7 +4,7 @@ export type HighlightToken = {
 };
 
 const primitiveTypes = new Set(["int", "float", "bool", "string", "void"]);
-const classTypes = new Set(["GameObject", "Text", "List", "Main", "MonoBehaviour", "Color", "Animator", "AudioSource", "Image", "Slider"]);
+const classTypes = new Set(["GameObject", "UIText", "UIBox", "UICircle", "UIButton", "List", "Main", "MonoBehaviour", "Color", "Animator", "AudioSource", "Image", "Slider"]);
 const keywords = new Set(["class", "public", "private", "static", "if", "else", "for", "foreach", "in", "new", "true", "false", "return"]);
 const tokenPattern = /\/\/.*|"(?:\\.|[^"\\])*"?|\b\d+(?:\.\d+)?\b|[A-Za-z_][A-Za-z0-9_]*|\s+|./g;
 

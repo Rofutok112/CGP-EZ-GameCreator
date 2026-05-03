@@ -4,9 +4,9 @@ class Main
     GameObject goal;
     GameObject drone1;
     GameObject drone2;
-    Text hud;
-    Text help;
-    Text message;
+    UIText hud;
+    UIText help;
+    UIText message;
     List<GameObject> platforms = new List<GameObject>();
     List<GameObject> coins = new List<GameObject>();
     List<GameObject> spikes = new List<GameObject>();
@@ -25,11 +25,11 @@ class Main
         player = Create.Box(80, 240, 30, 38);
         player.color = "#22d3ee";
 
-        hud = Create.Text("", 18, 24, 20);
+        hud = Create.UIText("", 18, 24, 20);
         hud.color = "#111827";
-        help = Create.Text("A/D: move   Space: jump   collect crystals and reach the gate", 18, 52, 16);
+        help = Create.UIText("A/D: move   Space: jump   collect crystals and reach the gate", 18, 52, 16);
         help.color = "#475569";
-        message = Create.Text("", 190, 170, 32);
+        message = Create.UIText("", 190, 170, 32);
         message.color = "#0f766e";
 
         AddPlatform(180, 339, 360, 42, "#334155");
@@ -65,7 +65,7 @@ class Main
 
         goal = Create.Box(2140, 246, 48, 72);
         goal.color = "#10b981";
-        camera.Follow(player);
+        Camera.Follow(player);
         UpdateHud();
     }
 
@@ -81,14 +81,14 @@ class Main
             CheckDamage();
             CheckGoal();
             UpdateHud();
-            camera.Follow(player);
+            Camera.Follow(player);
         }
 
         if (gameOver)
         {
-            if (key.Pressed("R"))
+            if (Input.GetKeyDown("R"))
             {
-                game.Reset();
+                Game.Reset();
             }
         }
     }
@@ -118,22 +118,22 @@ class Main
     {
         player.vx = 0;
 
-        if (key.Down("A"))
+        if (Input.GetKey("A"))
         {
             player.vx = -speed;
             player.flipX = true;
         }
-        else if (key.Down("D"))
+        else if (Input.GetKey("D"))
         {
             player.vx = speed;
             player.flipX = false;
         }
 
-        if (key.Pressed("Space") && grounded)
+        if (Input.GetKeyDown("Space") && grounded)
         {
             player.vy = jumpPower;
             grounded = false;
-            sound.Play("jump", 0.25f);
+            Sound.Play("jump", 0.25f);
         }
 
         player.vy = player.vy + gravity;
@@ -171,7 +171,7 @@ class Main
                 coins[i].Destroy();
                 coins.Remove(coins[i]);
                 score = score + 1;
-                sound.Play("coin", 0.35f);
+                Sound.Play("coin", 0.35f);
             }
         }
     }
@@ -208,7 +208,7 @@ class Main
         player.y = 240;
         player.vx = 0;
         player.vy = 0;
-        sound.Play("hit", 0.45f);
+        Sound.Play("hit", 0.45f);
 
         if (lives <= 0)
         {
@@ -228,7 +228,7 @@ class Main
             message.color = "#0f766e";
             player.vx = 0;
             player.vy = 0;
-            sound.Play("clear", 0.6f);
+            Sound.Play("clear", 0.6f);
         }
 
         if (player.Touch(goal) && score < totalCoins)

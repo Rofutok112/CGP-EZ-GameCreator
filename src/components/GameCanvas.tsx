@@ -8,6 +8,7 @@ type GameCanvasProps = {
   control: "stopped" | "running" | "paused";
   sessionId: number;
   assetScope?: string;
+  showCoordinates?: boolean;
   onDiagnostics(diagnostics: DslDiagnostic[]): void;
   onStop?(): void;
 };
@@ -22,6 +23,8 @@ class CanvasHost implements RuntimeHost {
   entities: RuntimeEntity[] = [];
   keys = new Set<string>();
   pressed = new Set<string>();
+  pointer = { x: 0, y: 0, down: false };
+  clicked = false;
   resetRequested = false;
   private readonly images = new Map<string, HTMLImageElement>();
   private readonly soundBuffers = new Map<string, Promise<AudioBuffer | null>>();
@@ -36,7 +39,12 @@ class CanvasHost implements RuntimeHost {
   private frame = 0;
   private cameraTarget: RuntimeEntity | null = null;
 
-  constructor(private readonly canvas: HTMLCanvasElement, private readonly assetScope = "") {}
+  constructor(private readonly canvas: HTMLCanvasElement, private readonly assetScope = "", private showCoordinates = false) {}
+
+  setShowCoordinates(value: boolean) {
+    this.showCoordinates = value;
+    this.render();
+  }
 
   bindKeys() {
     const down = (event: KeyboardEvent) => {
@@ -58,6 +66,41 @@ class CanvasHost implements RuntimeHost {
     return () => {
       window.removeEventListener("keydown", down, true);
       window.removeEventListener("keyup", up, true);
+    };
+  }
+
+  bindPointer() {
+    const updatePointer = (event: PointerEvent) => {
+      const rect = this.canvas.getBoundingClientRect();
+      this.pointer.x = ((event.clientX - rect.left) / rect.width) * WIDTH;
+      this.pointer.y = ((event.clientY - rect.top) / rect.height) * HEIGHT;
+    };
+    const down = (event: PointerEvent) => {
+      updatePointer(event);
+      this.pointer.down = true;
+      this.clicked = true;
+      this.canvas.setPointerCapture?.(event.pointerId);
+    };
+    const move = (event: PointerEvent) => updatePointer(event);
+    const up = (event: PointerEvent) => {
+      updatePointer(event);
+      this.pointer.down = false;
+      this.canvas.releasePointerCapture?.(event.pointerId);
+    };
+    const leave = () => {
+      this.pointer.down = false;
+    };
+    this.canvas.addEventListener("pointerdown", down);
+    this.canvas.addEventListener("pointermove", move);
+    this.canvas.addEventListener("pointerup", up);
+    this.canvas.addEventListener("pointercancel", leave);
+    this.canvas.addEventListener("pointerleave", leave);
+    return () => {
+      this.canvas.removeEventListener("pointerdown", down);
+      this.canvas.removeEventListener("pointermove", move);
+      this.canvas.removeEventListener("pointerup", up);
+      this.canvas.removeEventListener("pointercancel", leave);
+      this.canvas.removeEventListener("pointerleave", leave);
     };
   }
 
@@ -85,8 +128,20 @@ class CanvasHost implements RuntimeHost {
     return this.add({ kind: "GameObject", shape: "sprite", imageName: name, x, y, width, height, color: "#94a3b8" });
   }
 
-  createText(value: string, x: number, y: number, size = 20): RuntimeEntity {
-    return this.add({ kind: "Text", x, y, width: value.length * size * 0.6, height: size, value, size, color: "#111827" });
+  createUIText(value: string, x: number, y: number, size = 20): RuntimeEntity {
+    return this.add({ kind: "UIText", x, y, width: value.length * size * 0.6, height: size, value, size, color: "#111827" });
+  }
+
+  createUIBox(x: number, y: number, width: number, height: number): RuntimeEntity {
+    return this.add({ kind: "UIBox", shape: "box", x, y, width, height, color: "#e0f2fe" });
+  }
+
+  createUICircle(x: number, y: number, radius: number): RuntimeEntity {
+    return this.add({ kind: "UICircle", shape: "circle", x, y, width: radius * 2, height: radius * 2, radius, color: "#fef3c7" });
+  }
+
+  createUIButton(value: string, x: number, y: number, width: number, height: number): RuntimeEntity {
+    return this.add({ kind: "UIButton", shape: "button", x, y, width, height, value, size: 16, color: "#0f766e", textColor: "#ffffff" });
   }
 
   touch(a: RuntimeEntity, b: RuntimeEntity): boolean {
@@ -102,6 +157,18 @@ class CanvasHost implements RuntimeHost {
 
   keyPressed(key: string): boolean {
     return this.pressed.has(key);
+  }
+
+  buttonDown(entity: RuntimeEntity): boolean {
+    return this.pointer.down && this.hitScreenEntity(entity);
+  }
+
+  buttonClicked(entity: RuntimeEntity): boolean {
+    return this.clicked && this.hitScreenEntity(entity);
+  }
+
+  getMouse() {
+    return { x: this.pointer.x, y: this.pointer.y };
   }
 
   playSound(name: string, volume = 0.75) {
@@ -157,10 +224,12 @@ class CanvasHost implements RuntimeHost {
   step() {
     this.entities.forEach((entity) => {
       if (entity.destroyed) return;
+      if (isScreenEntity(entity)) return;
       entity.x += entity.vx;
       entity.y += entity.vy;
     });
     this.pressed.clear();
+    this.clicked = false;
     this.lastAt = performance.now();
     this.frame += 1;
   }
@@ -173,6 +242,7 @@ class CanvasHost implements RuntimeHost {
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
     ctx.strokeStyle = "#d0d5dd";
     ctx.strokeRect(0.5, 0.5, WIDTH - 1, HEIGHT - 1);
+    if (this.showCoordinates) this.drawCoordinateOverlay(ctx, 0);
 
     const offsetX = this.cameraTarget ? Math.max(0, this.cameraTarget.x - WIDTH / 2) : 0;
     ctx.save();
@@ -180,7 +250,7 @@ class CanvasHost implements RuntimeHost {
     for (const entity of this.entities) {
       if (!entity.visible || entity.destroyed) continue;
       ctx.fillStyle = entity.color || "#2563eb";
-      if (entity.kind === "Text") continue;
+      if (isScreenEntity(entity)) continue;
       if (entity.shape === "sprite") {
         this.drawSprite(ctx, entity);
       } else if (entity.shape === "circle") {
@@ -193,16 +263,106 @@ class CanvasHost implements RuntimeHost {
       }
     }
     ctx.restore();
+    if (this.showCoordinates && offsetX > 0) this.drawCameraLabel(ctx, offsetX);
 
+    this.drawScreenEntities(ctx);
+  }
+
+  private drawScreenEntities(ctx: CanvasRenderingContext2D) {
     for (const entity of this.entities) {
-      if (!entity.visible || entity.destroyed || entity.kind !== "Text") continue;
-      ctx.fillStyle = entity.color || "#111827";
-      ctx.font = `${entity.size ?? 20}px Arial, sans-serif`;
-      ctx.textBaseline = "top";
-      ctx.fillText(entity.value ?? "", entity.x, entity.y);
-      entity.width = (entity.value ?? "").length * (entity.size ?? 20) * 0.6;
-      entity.height = entity.size ?? 20;
+      if (!entity.visible || entity.destroyed || !isScreenEntity(entity)) continue;
+      if (entity.kind === "UIText") {
+        this.drawUIText(ctx, entity);
+      } else if (entity.kind === "UIButton") {
+        this.drawUIButton(ctx, entity);
+      } else if (entity.kind === "UICircle") {
+        ctx.fillStyle = entity.color || "#fef3c7";
+        ctx.beginPath();
+        ctx.arc(entity.x + entity.width / 2, entity.y + entity.height / 2, entity.width / 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = entity.color || "#e0f2fe";
+        ctx.fillRect(entity.x, entity.y, entity.width, entity.height);
+      }
     }
+  }
+
+  private drawUIText(ctx: CanvasRenderingContext2D, entity: RuntimeEntity) {
+    ctx.fillStyle = entity.color || "#111827";
+    ctx.font = `${entity.size ?? 20}px Arial, sans-serif`;
+    ctx.textBaseline = "top";
+    ctx.fillText(entity.value ?? "", entity.x, entity.y);
+    entity.width = (entity.value ?? "").length * (entity.size ?? 20) * 0.6;
+    entity.height = entity.size ?? 20;
+  }
+
+  private drawUIButton(ctx: CanvasRenderingContext2D, entity: RuntimeEntity) {
+    const hovering = this.hitScreenEntity(entity);
+    ctx.fillStyle = hovering ? "#0d9488" : entity.color || "#0f766e";
+    ctx.fillRect(entity.x, entity.y, entity.width, entity.height);
+    ctx.strokeStyle = "rgba(15, 23, 42, 0.18)";
+    ctx.strokeRect(entity.x + 0.5, entity.y + 0.5, entity.width - 1, entity.height - 1);
+    ctx.fillStyle = entity.textColor || "#ffffff";
+    ctx.font = `${entity.size ?? 16}px Arial, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(entity.value ?? "", entity.x + entity.width / 2, entity.y + entity.height / 2);
+    ctx.textAlign = "start";
+    ctx.textBaseline = "alphabetic";
+  }
+
+  private hitScreenEntity(entity: RuntimeEntity) {
+    if (!entity.visible || entity.destroyed) return false;
+    const bounds = entityBounds(entity);
+    return this.pointer.x >= bounds.left && this.pointer.x <= bounds.right && this.pointer.y >= bounds.top && this.pointer.y <= bounds.bottom;
+  }
+
+  private drawCoordinateOverlay(ctx: CanvasRenderingContext2D, offsetX: number) {
+    ctx.save();
+    const gridLineWidth = 2;
+    ctx.fillStyle = "rgba(15, 118, 110, 0.18)";
+    for (let x = 0; x <= WIDTH; x += 80) {
+      const left = x === 0 ? 0 : x - gridLineWidth / 2;
+      ctx.fillRect(left, 0, gridLineWidth, HEIGHT);
+    }
+    for (let y = 0; y <= HEIGHT; y += 60) {
+      const top = y === 0 ? 0 : y - gridLineWidth / 2;
+      ctx.fillRect(0, top, WIDTH, gridLineWidth);
+    }
+
+    ctx.fillStyle = "rgba(15, 118, 110, 0.72)";
+    ctx.font = "12px Arial, sans-serif";
+    ctx.textBaseline = "top";
+
+    for (let x = 0; x <= WIDTH; x += 80) {
+      ctx.fillText(String(Math.round(x + offsetX)), x + 4, 4);
+    }
+    for (let y = 0; y <= HEIGHT; y += 60) {
+      ctx.fillText(String(y), 4, y + 4);
+    }
+
+    ctx.strokeStyle = "rgba(180, 35, 24, 0.85)";
+    ctx.fillStyle = "rgba(180, 35, 24, 0.9)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(44, 0);
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, 44);
+    ctx.stroke();
+    ctx.fillText("(0, 0)", 8, 20);
+    ctx.restore();
+  }
+
+  private drawCameraLabel(ctx: CanvasRenderingContext2D, offsetX: number) {
+    ctx.save();
+    ctx.fillStyle = "rgba(24, 32, 42, 0.74)";
+    ctx.fillRect(WIDTH - 130, 8, 118, 24);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "12px Arial, sans-serif";
+    ctx.textBaseline = "top";
+    ctx.fillText(`camera x: ${Math.round(offsetX)}`, WIDTH - 120, 14);
+    ctx.restore();
   }
 
   renderIdle(message = "Ready") {
@@ -213,6 +373,7 @@ class CanvasHost implements RuntimeHost {
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
     ctx.strokeStyle = "#d0d5dd";
     ctx.strokeRect(0.5, 0.5, WIDTH - 1, HEIGHT - 1);
+    if (this.showCoordinates) this.drawCoordinateOverlay(ctx, 0);
     ctx.fillStyle = "#667085";
     ctx.font = "20px Arial, sans-serif";
     ctx.textAlign = "center";
@@ -389,7 +550,7 @@ function assetUrl(fileName: string, scope: string) {
 }
 
 function entityBounds(entity: RuntimeEntity) {
-  if (entity.kind === "Text") {
+  if (isScreenEntity(entity)) {
     return {
       left: entity.x,
       top: entity.y,
@@ -405,7 +566,11 @@ function entityBounds(entity: RuntimeEntity) {
   };
 }
 
-export function GameCanvas({ code, control, sessionId, assetScope = "", onDiagnostics, onStop }: GameCanvasProps) {
+function isScreenEntity(entity: RuntimeEntity) {
+  return entity.kind === "UIText" || entity.kind === "UIBox" || entity.kind === "UICircle" || entity.kind === "UIButton";
+}
+
+export function GameCanvas({ code, control, sessionId, assetScope = "", showCoordinates = false, onDiagnostics, onStop }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const onDiagnosticsRef = useRef(onDiagnostics);
   const onStopRef = useRef(onStop);
@@ -426,18 +591,24 @@ export function GameCanvas({ code, control, sessionId, assetScope = "", onDiagno
     if (!canvas) return;
     canvas.width = WIDTH;
     canvas.height = HEIGHT;
-    const host = new CanvasHost(canvas, assetScope);
+    const host = new CanvasHost(canvas, assetScope, showCoordinates);
     hostRef.current = host;
-    const unbind = host.bindKeys();
+    const unbindKeys = host.bindKeys();
+    const unbindPointer = host.bindPointer();
     host.renderIdle();
 
     return () => {
       cancelAnimationFrame(frameRef.current);
-      unbind();
+      unbindKeys();
+      unbindPointer();
       hostRef.current = null;
       instanceRef.current = null;
     };
   }, [assetScope]);
+
+  useEffect(() => {
+    hostRef.current?.setShowCoordinates(showCoordinates);
+  }, [showCoordinates]);
 
   useEffect(() => {
     const host = hostRef.current;

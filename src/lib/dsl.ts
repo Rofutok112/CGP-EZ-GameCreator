@@ -23,7 +23,8 @@ type Token = {
   column: number;
 };
 
-type TypeName = "int" | "float" | "bool" | "string" | "GameObject" | "Text" | `List<${string}>`;
+type EntityTypeName = "GameObject" | "UIText" | "UIBox" | "UICircle" | "UIButton";
+type TypeName = "int" | "float" | "bool" | "string" | EntityTypeName | `List<${string}>`;
 
 type ProgramAst = {
   fields: FieldDecl[];
@@ -98,8 +99,8 @@ type NewListExpr = { kind: "newList"; itemType: string; token: Token };
 
 export type RuntimeEntity = {
   id: number;
-  kind: "GameObject" | "Text";
-  shape?: "box" | "circle" | "sprite";
+  kind: EntityTypeName;
+  shape?: "box" | "circle" | "sprite" | "button";
   x: number;
   y: number;
   vx: number;
@@ -110,6 +111,7 @@ export type RuntimeEntity = {
   visible: boolean;
   destroyed: boolean;
   color: string;
+  textColor?: string;
   flipX: boolean;
   imageName?: string;
   value?: string;
@@ -132,7 +134,13 @@ export type RuntimeHost = {
   createBox(x: number, y: number, width: number, height: number): RuntimeEntity;
   createCircle(x: number, y: number, radius: number): RuntimeEntity;
   createSprite(name: string, x: number, y: number, width: number, height: number): RuntimeEntity;
-  createText(value: string, x: number, y: number, size?: number): RuntimeEntity;
+  createUIText(value: string, x: number, y: number, size?: number): RuntimeEntity;
+  createUIBox(x: number, y: number, width: number, height: number): RuntimeEntity;
+  createUICircle(x: number, y: number, radius: number): RuntimeEntity;
+  createUIButton(value: string, x: number, y: number, width: number, height: number): RuntimeEntity;
+  buttonDown(entity: RuntimeEntity): boolean;
+  buttonClicked(entity: RuntimeEntity): boolean;
+  getMouse(): { x: number; y: number };
   touch(a: RuntimeEntity, b: RuntimeEntity): boolean;
   keyDown(key: string): boolean;
   keyPressed(key: string): boolean;
@@ -232,16 +240,15 @@ type StaticType =
   | "float"
   | "bool"
   | "string"
-  | "GameObject"
-  | "Text"
+  | EntityTypeName
   | "Create"
+  | "Input"
   | "Time"
   | "Random"
   | "Math"
-  | "key"
-  | "game"
-  | "sound"
-  | "camera"
+  | "Game"
+  | "Sound"
+  | "Camera"
   | `List<${string}>`
   | "unknown"
   | "void";
@@ -303,7 +310,7 @@ class StaticAnalyzer {
   }
 
   private defineBuiltins() {
-    for (const name of ["Create", "Time", "Random", "Math", "key", "game", "sound", "camera"] as const) {
+    for (const name of ["Create", "Input", "Time", "Random", "Math", "Game", "Sound", "Camera"] as const) {
       this.root.define(name, { type: name, token: this.ast.start.token, assigned: true, field: false });
     }
   }
@@ -313,7 +320,7 @@ class StaticAnalyzer {
       const symbol: StaticSymbol = {
         type: field.typeName,
         token: field.token,
-        assigned: field.initializer !== undefined || !["GameObject", "Text"].includes(field.typeName),
+        assigned: field.initializer !== undefined || !isObjectType(field.typeName),
         field: true
       };
       if (!this.root.define(field.name, symbol)) {
@@ -326,7 +333,7 @@ class StaticAnalyzer {
       const valueType = this.typeOf(field.initializer, this.root);
       this.expectAssignable(field.typeName, valueType, field.token);
       if (isObjectType(field.typeName)) {
-        this.add(field.token, "GameObject や Text の作成は Start() の中で Create を使ってください。", "warning");
+        this.add(field.token, "GameObject や UI の作成は Start() の中で Create を使ってください。", "warning");
       }
     }
   }
@@ -381,9 +388,9 @@ class StaticAnalyzer {
         return;
       }
       case "foreach": {
-        const listType = this.typeOf(stmt.list, scope);
-        if (!isListType(listType)) this.add(stmt.token, "foreach で使えるのは List<T> だけです。");
-        const itemType = isListType(listType) ? (listType.slice(5, -1) as StaticType) : stmt.typeName;
+        const iterableType = this.typeOf(stmt.list, scope);
+        if (!isListType(iterableType) && iterableType !== "string") this.add(stmt.token, "foreach で使えるのは string または List<T> だけです。");
+        const itemType = iterableType === "string" ? "string" : isListType(iterableType) ? (iterableType.slice(5, -1) as StaticType) : stmt.typeName;
         this.expectAssignable(stmt.typeName, itemType, stmt.token);
         const child = new StaticScope(scope);
         child.define(stmt.name, { type: stmt.typeName, token: stmt.token, assigned: true, field: false });
@@ -413,7 +420,7 @@ class StaticAnalyzer {
           return "unknown";
         }
         if (!symbol.assigned && isObjectType(symbol.type)) {
-          this.add(expr.token, `${expr.name} はまだ作られていません。Start() で Create.Box(...) や Create.Text(...) を代入してください。`);
+          this.add(expr.token, `${expr.name} はまだ作られていません。Start() で Create.Box(...) や Create.UIText(...) を代入してください。`);
         }
         if (this.phase === "Update" && symbol.field && isObjectType(symbol.type) && !this.startAssigned.has(expr.name)) {
           this.add(expr.token, `${expr.name} は Start() で作られていない可能性があります。`);
@@ -528,11 +535,25 @@ class StaticAnalyzer {
       this.add(token, `GameObject に ${property} という${forWrite ? "代入できるプロパティ" : "プロパティ"}はありません。`);
       return "unknown";
     }
-    if (ownerType === "Text") {
+    if (ownerType === "UIText") {
       const props: Record<string, StaticType> = { x: "float", y: "float", value: "string", size: "float", color: "string", visible: "bool" };
       if (property in props) return props[property];
       if (["Hide", "Show", "Move", "Destroy"].includes(property)) return "unknown";
-      this.add(token, `Text に ${property} という${forWrite ? "代入できるプロパティ" : "プロパティ"}はありません。`);
+      this.add(token, `UIText に ${property} という${forWrite ? "代入できるプロパティ" : "プロパティ"}はありません。`);
+      return "unknown";
+    }
+    if (ownerType === "UIBox" || ownerType === "UICircle") {
+      const props: Record<string, StaticType> = { x: "float", y: "float", width: "float", height: "float", visible: "bool", color: "string" };
+      if (property in props) return props[property];
+      if (["Hide", "Show", "Move", "Destroy"].includes(property)) return "unknown";
+      this.add(token, `${ownerType} に ${property} という${forWrite ? "代入できるプロパティ" : "プロパティ"}はありません。`);
+      return "unknown";
+    }
+    if (ownerType === "UIButton") {
+      const props: Record<string, StaticType> = { x: "float", y: "float", width: "float", height: "float", value: "string", color: "string", textColor: "string", visible: "bool" };
+      if (property in props) return props[property];
+      if (["Clicked", "Down", "Hide", "Show", "Move", "Destroy"].includes(property)) return "unknown";
+      this.add(token, `UIButton に ${property} という${forWrite ? "代入できるプロパティ" : "プロパティ"}はありません。`);
       return "unknown";
     }
     if (isListType(ownerType)) {
@@ -555,6 +576,11 @@ class StaticAnalyzer {
       if (["time", "deltaTime"].includes(property)) return "float";
       if (property === "frameCount") return "int";
       this.add(token, `Time.${property} は存在しません。`);
+      return "unknown";
+    }
+    if (ownerType === "Input") {
+      if (property === "mouseX" || property === "mouseY") return "float";
+      this.add(token, `Input.${property} は存在しません。`);
       return "unknown";
     }
     return "unknown";
@@ -589,14 +615,17 @@ class StaticAnalyzer {
       if (method === "Box") return this.expectArgs(method, args, ["float", "float", "float", "float"], token) ? "GameObject" : "unknown";
       if (method === "Circle") return this.expectArgs(method, args, ["float", "float", "float"], token) ? "GameObject" : "unknown";
       if (method === "Sprite") return this.expectArgs(method, args, ["string", "float", "float", "float", "float"], token) ? "GameObject" : "unknown";
-      if (method === "Text") {
-        if (args.length !== 3 && args.length !== 4) this.add(token, "Create.Text は value, x, y または value, x, y, size で呼び出してください。");
+      if (method === "UIText") {
+        if (args.length !== 3 && args.length !== 4) this.add(token, "Create.UIText は value, x, y または value, x, y, size で呼び出してください。");
         this.expectAssignable("string", args[0] ?? "unknown", token);
         this.expectAssignable("float", args[1] ?? "unknown", token);
         this.expectAssignable("float", args[2] ?? "unknown", token);
         if (args[3]) this.expectAssignable("float", args[3], token);
-        return "Text";
+        return "UIText";
       }
+      if (method === "UIBox") return this.expectArgs(method, args, ["float", "float", "float", "float"], token) ? "UIBox" : "unknown";
+      if (method === "UICircle") return this.expectArgs(method, args, ["float", "float", "float"], token) ? "UICircle" : "unknown";
+      if (method === "UIButton") return this.expectArgs(method, args, ["string", "float", "float", "float", "float"], token) ? "UIButton" : "unknown";
       this.add(token, `Create.${method} は存在しません。`);
       return "unknown";
     }
@@ -609,10 +638,17 @@ class StaticAnalyzer {
       this.add(token, `GameObject に ${method} というメソッドはありません。`);
       return "unknown";
     }
-    if (ownerType === "Text") {
+    if (ownerType === "UIText" || ownerType === "UIBox" || ownerType === "UICircle") {
       if (["Hide", "Show", "Destroy"].includes(method)) return this.expectArgs(method, args, [], token) ? "void" : "void";
       if (method === "Move") return this.expectArgs(method, args, ["float", "float"], token) ? "void" : "void";
-      this.add(token, `Text に ${method} というメソッドはありません。`);
+      this.add(token, `${ownerType} に ${method} というメソッドはありません。`);
+      return "unknown";
+    }
+    if (ownerType === "UIButton") {
+      if (method === "Clicked" || method === "Down") return this.expectArgs(method, args, [], token) ? "bool" : "bool";
+      if (["Hide", "Show", "Destroy"].includes(method)) return this.expectArgs(method, args, [], token) ? "void" : "void";
+      if (method === "Move") return this.expectArgs(method, args, ["float", "float"], token) ? "void" : "void";
+      this.add(token, `UIButton に ${method} というメソッドはありません。`);
       return "unknown";
     }
     if (isNumberType(ownerType)) {
@@ -644,17 +680,17 @@ class StaticAnalyzer {
       this.add(token, `Math.${method} は存在しません。`);
       return "unknown";
     }
-    if (ownerType === "key") {
-      if (method === "Down" || method === "Pressed") return this.expectArgs(method, args, ["string"], token) ? "bool" : "bool";
-      this.add(token, `key.${method} は存在しません。`);
+    if (ownerType === "Input") {
+      if (method === "GetKey" || method === "GetKeyDown") return this.expectArgs(method, args, ["string"], token) ? "bool" : "bool";
+      this.add(token, `Input.${method} は存在しません。`);
       return "unknown";
     }
-    if (ownerType === "game") {
+    if (ownerType === "Game") {
       if (method === "Reset") return this.expectArgs(method, args, [], token) ? "void" : "void";
-      this.add(token, `game.${method} は存在しません。`);
+      this.add(token, `Game.${method} は存在しません。`);
       return "unknown";
     }
-    if (ownerType === "sound") {
+    if (ownerType === "Sound") {
       if (method === "Play") {
         if (args.length !== 1 && args.length !== 2) {
           this.add(token, `Play の引数は 1 個または 2 個です。現在は ${args.length} 個あります。`);
@@ -664,12 +700,12 @@ class StaticAnalyzer {
         if (args[1]) this.expectAssignable("float", args[1], token);
         return "void";
       }
-      this.add(token, `sound.${method} は存在しません。`);
+      this.add(token, `Sound.${method} は存在しません。`);
       return "unknown";
     }
-    if (ownerType === "camera") {
+    if (ownerType === "Camera") {
       if (method === "Follow") return this.expectArgs(method, args, ["GameObject"], token, true) ? "void" : "void";
-      this.add(token, `camera.${method} は存在しません。`);
+      this.add(token, `Camera.${method} は存在しません。`);
       return "unknown";
     }
     if (ownerType !== "unknown") this.add(token, `${ownerType} では ${method} を呼び出せません。`);
@@ -682,7 +718,7 @@ class StaticAnalyzer {
       return false;
     }
     expected.forEach((type, index) => {
-      if (allowTextAsObject && type === "GameObject" && actual[index] === "Text") return;
+      if (allowTextAsObject && type === "GameObject" && isObjectType(actual[index])) return;
       this.expectAssignable(type, actual[index], token);
     });
     return true;
@@ -705,7 +741,11 @@ function isNumberType(type: StaticType): boolean {
 }
 
 function isObjectType(type: StaticType): boolean {
-  return type === "GameObject" || type === "Text";
+  return ["GameObject", "UIText", "UIBox", "UICircle", "UIButton"].includes(type);
+}
+
+function isEntityTypeName(value: string): value is EntityTypeName {
+  return ["GameObject", "UIText", "UIBox", "UICircle", "UIButton"].includes(value);
 }
 
 function isListType(type: StaticType): type is `List<${string}>` {
@@ -795,7 +835,7 @@ function needsSemicolon(trimmed: string): boolean {
   if (trimmed.endsWith(";") || trimmed.endsWith("{") || trimmed.endsWith("}") || trimmed === "else") return false;
   if (/^(class|void|if|else if|else|for|foreach)\b/.test(trimmed)) return false;
   if (/^[A-Za-z_][A-Za-z0-9_]*\s*:\s*$/.test(trimmed)) return false;
-  return /^(int|float|bool|string|GameObject|Text|List\s*<.+>)\s+[A-Za-z_][A-Za-z0-9_]*\b/.test(trimmed) || /=/.test(trimmed) || /\w+\s*\(.*\)/.test(trimmed);
+  return /^(int|float|bool|string|GameObject|UIText|UIBox|UICircle|UIButton|List\s*<.+>)\s+[A-Za-z_][A-Za-z0-9_]*\b/.test(trimmed) || /=/.test(trimmed) || /\w+\s*\(.*\)/.test(trimmed);
 }
 
 function uniqueDiagnostics(items: DslDiagnostic[]): DslDiagnostic[] {
@@ -829,7 +869,10 @@ function lex(source: string): Token[] {
     "bool",
     "string",
     "GameObject",
-    "Text",
+    "UIText",
+    "UIBox",
+    "UICircle",
+    "UIButton",
     "List"
   ]);
 
@@ -985,14 +1028,14 @@ class Parser {
 
   private parseType(): TypeName {
     const token = this.advance();
-    if (!["int", "float", "bool", "string", "GameObject", "Text", "List"].includes(token.value)) {
-      throw diagnostic(token, "型名が必要です。int, float, bool, string, GameObject, Text, List<T> が使えます。");
+    if (!["int", "float", "bool", "string", "GameObject", "UIText", "UIBox", "UICircle", "UIButton", "List"].includes(token.value)) {
+      throw diagnostic(token, "型名が必要です。int, float, bool, string, GameObject, UIText, UIBox, UICircle, UIButton, List<T> が使えます。");
     }
     if (token.value !== "List") return token.value as TypeName;
     this.consume("operator", "<", "List の型は List<GameObject> のように書いてください。");
     const item = this.advance();
-    if (!["int", "float", "bool", "string", "GameObject", "Text"].includes(item.value)) {
-      throw diagnostic(item, "List<T> の T には int, float, bool, string, GameObject, Text が使えます。");
+    if (!["int", "float", "bool", "string", "GameObject", "UIText", "UIBox", "UICircle", "UIButton"].includes(item.value)) {
+      throw diagnostic(item, "List<T> の T には int, float, bool, string, GameObject, UIText, UIBox, UICircle, UIButton が使えます。");
     }
     this.consume("operator", ">", "List<T> の最後に > が必要です。");
     return `List<${item.value}>`;
@@ -1178,8 +1221,8 @@ class Parser {
       const list = this.consume("keyword", "List", "初期版で new できるのは new List<T>() だけです。");
       this.consume("operator", "<", "List の型は new List<GameObject>() のように書いてください。");
       const item = this.advance();
-      if (!["int", "float", "bool", "string", "GameObject", "Text"].includes(item.value)) {
-        throw diagnostic(item, "List<T> の T には int, float, bool, string, GameObject, Text が使えます。");
+      if (!["int", "float", "bool", "string", "GameObject", "UIText", "UIBox", "UICircle", "UIButton"].includes(item.value)) {
+        throw diagnostic(item, "List<T> の T には int, float, bool, string, GameObject, UIText, UIBox, UICircle, UIButton が使えます。");
       }
       this.consume("operator", ">", "List<T> の最後に > が必要です。");
       this.consume("symbol", "(", "new List<T> の後に () が必要です。");
@@ -1198,7 +1241,7 @@ class Parser {
   }
 
   private isTypeStart() {
-    return ["int", "float", "bool", "string", "GameObject", "Text", "List"].includes(this.peek().value);
+    return ["int", "float", "bool", "string", "GameObject", "UIText", "UIBox", "UICircle", "UIButton", "List"].includes(this.peek().value);
   }
 
   private match(kind: TokenKind, value?: string) {
@@ -1309,7 +1352,7 @@ export class DslInstance {
 
   private resetFields() {
     this.fields = new Scope();
-    for (const name of ["Create", "Time", "Random", "Math", "key", "game", "sound", "camera"] as const) {
+    for (const name of ["Create", "Input", "Time", "Random", "Math", "Game", "Sound", "Camera"] as const) {
       this.fields.define(name, { __kind: "builtin", name });
     }
     for (const field of this.ast.fields) {
@@ -1351,8 +1394,9 @@ export class DslInstance {
         return;
       }
       case "foreach": {
-        const list = this.expectList(this.evaluate(stmt.list, scope), stmt.token);
-        for (const item of [...list.items]) {
+        const iterable = this.evaluate(stmt.list, scope);
+        const items = typeof iterable === "string" ? [...iterable] : [...this.expectList(iterable, stmt.token).items];
+        for (const item of items) {
           const child = new Scope(scope);
           child.define(stmt.name, item);
           this.execute(stmt.body, child);
@@ -1468,13 +1512,18 @@ export class DslInstance {
         if (property === "deltaTime") return time.deltaTime;
         if (property === "frameCount") return time.frameCount;
       }
+      if (value.name === "Input") {
+        const mouse = this.host.getMouse();
+        if (property === "mouseX") return mouse.x;
+        if (property === "mouseY") return mouse.y;
+      }
       return { __kind: "builtin", name: `${value.name}.${property}` };
     }
     throw diagnostic(token, `${stringify(value)} には ${property} というプロパティはありません。`);
   }
 
   private setMember(value: RuntimeValue, property: string, assigned: RuntimeValue, token: Token) {
-    if (!isEntity(value)) throw diagnostic(token, "プロパティを代入できるのは GameObject または Text だけです。");
+    if (!isEntity(value)) throw diagnostic(token, "プロパティを代入できるのは GameObject または UI オブジェクトだけです。");
     assertAlive(value, token);
     const numeric = new Set(["x", "y", "vx", "vy", "width", "height", "size"]);
     if (numeric.has(property)) {
@@ -1485,7 +1534,7 @@ export class DslInstance {
       (value as unknown as Record<string, boolean>)[property] = toBool(assigned);
       return;
     }
-    if (property === "color" || property === "value") {
+    if (property === "color" || property === "value" || property === "textColor") {
       (value as unknown as Record<string, string>)[property] = stringify(assigned);
       return;
     }
@@ -1528,7 +1577,10 @@ export class DslInstance {
     if (name === "Create" && method === "Box") return this.host.createBox(numArg(args, 0, token), numArg(args, 1, token), numArg(args, 2, token), numArg(args, 3, token));
     if (name === "Create" && method === "Circle") return this.host.createCircle(numArg(args, 0, token), numArg(args, 1, token), numArg(args, 2, token));
     if (name === "Create" && method === "Sprite") return this.host.createSprite(stringArg(args, 0, token), numArg(args, 1, token), numArg(args, 2, token), numArg(args, 3, token), numArg(args, 4, token));
-    if (name === "Create" && method === "Text") return this.host.createText(stringify(args[0] ?? ""), numArg(args, 1, token), numArg(args, 2, token), args[3] === undefined ? undefined : numArg(args, 3, token));
+    if (name === "Create" && method === "UIText") return this.host.createUIText(stringify(args[0] ?? ""), numArg(args, 1, token), numArg(args, 2, token), args[3] === undefined ? undefined : numArg(args, 3, token));
+    if (name === "Create" && method === "UIBox") return this.host.createUIBox(numArg(args, 0, token), numArg(args, 1, token), numArg(args, 2, token), numArg(args, 3, token));
+    if (name === "Create" && method === "UICircle") return this.host.createUICircle(numArg(args, 0, token), numArg(args, 1, token), numArg(args, 2, token));
+    if (name === "Create" && method === "UIButton") return this.host.createUIButton(stringify(args[0] ?? ""), numArg(args, 1, token), numArg(args, 2, token), numArg(args, 3, token), numArg(args, 4, token));
     if (name === "Random" && method === "Range") return numArg(args, 0, token) + Math.random() * (numArg(args, 1, token) - numArg(args, 0, token));
     if (name === "Random" && method === "Chance") return Math.random() < numArg(args, 0, token);
     if (name === "Math" && method === "Round") {
@@ -1539,17 +1591,17 @@ export class DslInstance {
     if (name === "Math" && method === "Fixed") return numArg(args, 0, token).toFixed(digitsArg(args, 1, token));
     if (name === "Math" && method === "Floor") return Math.floor(numArg(args, 0, token));
     if (name === "Math" && method === "Ceil") return Math.ceil(numArg(args, 0, token));
-    if (name === "key" && method === "Down") return this.host.keyDown(stringify(args[0] ?? ""));
-    if (name === "key" && method === "Pressed") return this.host.keyPressed(stringify(args[0] ?? ""));
-    if (name === "game" && method === "Reset") {
+    if (name === "Input" && method === "GetKey") return this.host.keyDown(stringify(args[0] ?? ""));
+    if (name === "Input" && method === "GetKeyDown") return this.host.keyPressed(stringify(args[0] ?? ""));
+    if (name === "Game" && method === "Reset") {
       this.host.requestReset();
       return null;
     }
-    if (name === "sound" && method === "Play") {
+    if (name === "Sound" && method === "Play") {
       this.host.playSound(stringify(args[0] ?? ""), args[1] === undefined ? undefined : numArg(args, 1, token));
       return null;
     }
-    if (name === "camera" && method === "Follow") {
+    if (name === "Camera" && method === "Follow") {
       const target = this.expectEntity(args[0], token);
       this.host.follow(target);
       return null;
@@ -1611,6 +1663,14 @@ export class DslInstance {
       entity.imageName = stringArg(args, 0, token);
       return null;
     }
+    if (method === "Clicked") {
+      if (entity.kind !== "UIButton") throw diagnostic(token, "Clicked は UIButton だけで使えます。");
+      return this.host.buttonClicked(entity);
+    }
+    if (method === "Down") {
+      if (entity.kind !== "UIButton") throw diagnostic(token, "Down は UIButton だけで使えます。");
+      return this.host.buttonDown(entity);
+    }
     if (method === "Destroy") {
       entity.destroyed = true;
       entity.visible = false;
@@ -1626,7 +1686,7 @@ export class DslInstance {
 
   private expectEntity(value: RuntimeValue, token: Token): RuntimeEntity {
     if (isEntity(value)) return value;
-    throw diagnostic(token, "ここには GameObject または Text が必要です。");
+    throw diagnostic(token, "ここには GameObject または UI オブジェクトが必要です。");
   }
 }
 
@@ -1639,7 +1699,7 @@ function defaultValue(typeName: TypeName): RuntimeValue {
 }
 
 function isEntity(value: RuntimeValue): value is RuntimeEntity {
-  return typeof value === "object" && value !== null && "kind" in value && (value.kind === "GameObject" || value.kind === "Text");
+  return typeof value === "object" && value !== null && "kind" in value && isEntityTypeName(String(value.kind));
 }
 
 function isList(value: RuntimeValue): value is ListValue {
@@ -1655,7 +1715,7 @@ function assertAlive(entity: RuntimeEntity, token: Token) {
 }
 
 function entityBounds(entity: RuntimeEntity) {
-  if (entity.kind === "Text") {
+  if (isScreenEntity(entity)) {
     return {
       left: entity.x,
       top: entity.y,
@@ -1669,6 +1729,10 @@ function entityBounds(entity: RuntimeEntity) {
     right: entity.x + entity.width / 2,
     bottom: entity.y + entity.height / 2
   };
+}
+
+function isScreenEntity(entity: RuntimeEntity): boolean {
+  return entity.kind === "UIText" || entity.kind === "UIBox" || entity.kind === "UICircle" || entity.kind === "UIButton";
 }
 
 function toNumber(value: RuntimeValue, token: Token): number {

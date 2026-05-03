@@ -15,8 +15,8 @@ export type CodeEditorHandle = {
 };
 
 const globalCompletions = [
-  "class Main", "void Start()", "void Update()", "void MovePlayer(float speed)", "int", "float", "bool", "string", "void", "GameObject", "Text", "List<GameObject>",
-  "Create", "Time", "Random", "Math", "key", "game", "sound", "camera"
+  "class Main", "void Start()", "void Update()", "void MovePlayer(float speed)", "int", "float", "bool", "string", "void", "GameObject", "UIText", "UIBox", "UICircle", "UIButton", "List<GameObject>",
+  "Create", "Input", "Time", "Random", "Math", "Game", "Sound", "Camera"
 ].map((label) => ({ label, type: label.includes("(") ? "function" : "keyword" }));
 
 const snippetCompletions = [
@@ -45,6 +45,11 @@ const snippetCompletions = [
     type: "keyword",
     detail: "foreach文"
   }),
+  snippetCompletion("foreach (string ${ch} in ${text})\n{\n    ${}\n}", {
+    label: "foreach string",
+    type: "keyword",
+    detail: "文字列を1文字ずつ読む"
+  }),
   snippetCompletion("void ${FunctionName}()\n{\n    ${}\n}", {
     label: "void function",
     type: "function",
@@ -55,10 +60,10 @@ const snippetCompletions = [
     type: "variable",
     detail: "フィールド宣言"
   }),
-  snippetCompletion("Text ${name};", {
-    label: "Text field",
+  snippetCompletion("UIText ${name};", {
+    label: "UIText field",
     type: "variable",
-    detail: "テキスト宣言"
+    detail: "UIテキスト宣言"
   })
 ];
 
@@ -67,7 +72,10 @@ const memberCompletions: Record<string, { label: string; type: string; detail?: 
     { label: "Box", type: "function", detail: "Create.Box(x, y, width, height)" },
     { label: "Circle", type: "function", detail: "Create.Circle(x, y, radius)" },
     { label: "Sprite", type: "function", detail: "Create.Sprite(name, x, y, width, height)" },
-    { label: "Text", type: "function", detail: "Create.Text(value, x, y, size)" }
+    { label: "UIText", type: "function", detail: "Create.UIText(value, x, y, size)" },
+    { label: "UIBox", type: "function", detail: "Create.UIBox(x, y, width, height)" },
+    { label: "UICircle", type: "function", detail: "Create.UICircle(x, y, radius)" },
+    { label: "UIButton", type: "function", detail: "Create.UIButton(text, x, y, width, height)" }
   ],
   Time: [
     { label: "time", type: "property" },
@@ -84,13 +92,15 @@ const memberCompletions: Record<string, { label: string; type: string; detail?: 
     { label: "Floor", type: "function", detail: "Math.Floor(value)" },
     { label: "Ceil", type: "function", detail: "Math.Ceil(value)" }
   ],
-  key: [
-    { label: "Down", type: "function", detail: "key.Down(\"A\")" },
-    { label: "Pressed", type: "function", detail: "key.Pressed(\"Space\")" }
+  Input: [
+    { label: "GetKey", type: "function", detail: "Input.GetKey(\"A\")" },
+    { label: "GetKeyDown", type: "function", detail: "Input.GetKeyDown(\"Space\")" },
+    { label: "mouseX", type: "property", detail: "Input.mouseX" },
+    { label: "mouseY", type: "property", detail: "Input.mouseY" }
   ],
-  game: [{ label: "Reset", type: "function" }],
-  sound: [{ label: "Play", type: "function", detail: "sound.Play(\"jump\", 0.5f)" }],
-  camera: [{ label: "Follow", type: "function" }],
+  Game: [{ label: "Reset", type: "function", detail: "Game.Reset()" }],
+  Sound: [{ label: "Play", type: "function", detail: "Sound.Play(\"jump\", 0.5f)" }],
+  Camera: [{ label: "Follow", type: "function", detail: "Camera.Follow(player)" }],
   GameObject: [
     { label: "x", type: "property" },
     { label: "y", type: "property" },
@@ -109,13 +119,53 @@ const memberCompletions: Record<string, { label: string; type: string; detail?: 
     { label: "SetSprite", type: "function", detail: "obj.SetSprite(name)" },
     { label: "Destroy", type: "function" }
   ],
-  Text: [
+  UIText: [
     { label: "x", type: "property" },
     { label: "y", type: "property" },
     { label: "value", type: "property" },
     { label: "size", type: "property" },
     { label: "color", type: "property" },
     { label: "visible", type: "property" },
+    { label: "Hide", type: "function" },
+    { label: "Show", type: "function" },
+    { label: "Move", type: "function" },
+    { label: "Destroy", type: "function" }
+  ],
+  UIBox: [
+    { label: "x", type: "property" },
+    { label: "y", type: "property" },
+    { label: "width", type: "property" },
+    { label: "height", type: "property" },
+    { label: "color", type: "property" },
+    { label: "visible", type: "property" },
+    { label: "Hide", type: "function" },
+    { label: "Show", type: "function" },
+    { label: "Move", type: "function" },
+    { label: "Destroy", type: "function" }
+  ],
+  UICircle: [
+    { label: "x", type: "property" },
+    { label: "y", type: "property" },
+    { label: "width", type: "property" },
+    { label: "height", type: "property" },
+    { label: "color", type: "property" },
+    { label: "visible", type: "property" },
+    { label: "Hide", type: "function" },
+    { label: "Show", type: "function" },
+    { label: "Move", type: "function" },
+    { label: "Destroy", type: "function" }
+  ],
+  UIButton: [
+    { label: "x", type: "property" },
+    { label: "y", type: "property" },
+    { label: "width", type: "property" },
+    { label: "height", type: "property" },
+    { label: "value", type: "property" },
+    { label: "color", type: "property" },
+    { label: "textColor", type: "property" },
+    { label: "visible", type: "property" },
+    { label: "Clicked", type: "function" },
+    { label: "Down", type: "function" },
     { label: "Hide", type: "function" },
     { label: "Show", type: "function" },
     { label: "Move", type: "function" },
@@ -151,9 +201,20 @@ const commentMark = Decoration.mark({ class: "tok-comment" });
 const primitiveTypes = new Set(["int", "float", "bool", "string", "void"]);
 const classTypes = new Set([
   "GameObject",
-  "Text",
+  "UIText",
+  "UIBox",
+  "UICircle",
+  "UIButton",
   "List",
   "Main",
+  "Create",
+  "Input",
+  "Time",
+  "Random",
+  "Math",
+  "Game",
+  "Sound",
+  "Camera",
   "MonoBehaviour",
   "Color",
   "Animator",
@@ -169,15 +230,23 @@ const apiDocs: Record<string, string> = {
   "Create.Sprite": "Create.Sprite(name, centerX, centerY, width, height)",
   "SetSprite": "obj.SetSprite(name)",
   "flipX": "obj.flipX = true",
-  "Create.Text": "Create.Text(value, left, top, size)",
+  "Create.UIText": "Create.UIText(value, left, top, size)",
+  "Create.UIBox": "Create.UIBox(left, top, width, height)",
+  "Create.UICircle": "Create.UICircle(left, top, radius)",
+  "Create.UIButton": "Create.UIButton(text, left, top, width, height)",
   "Touch": "bool Touch(other)",
   "TouchWall": "bool TouchWall()",
   "Destroy": "描画 / 当たり判定から削除",
   "Hide": "非表示 / 当たり判定なし",
   "Show": "再表示",
   "Move": "Move(x, y)",
-  "key.Down": "key.Down(\"A\")",
-  "key.Pressed": "key.Pressed(\"Space\")",
+  "Input.GetKey": "Input.GetKey(\"A\")",
+  "Input.GetKeyDown": "Input.GetKeyDown(\"Space\")",
+  "Input.mouseX": "マウスのX座標",
+  "Input.mouseY": "マウスのY座標",
+  "Game.Reset": "Game.Reset()",
+  "Sound.Play": "Sound.Play(\"jump\", 0.5f)",
+  "Camera.Follow": "Camera.Follow(player)",
   "Random.Range": "Random.Range(min, max)",
   "Random.Chance": "Random.Chance(0.01f)",
   "Math.Round": "Math.Round(value, digits)",
@@ -208,7 +277,7 @@ function dslCompletions(context: CompletionContext) {
 function inferSymbolType(source: string, name: string): string | null {
   const code = maskCommentsAndStrings(source);
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const matches = [...code.matchAll(new RegExp(`\\b(GameObject|Text|List\\s*<[^>]+>|int|float|bool|string)\\s+${escaped}\\b`, "g"))];
+  const matches = [...code.matchAll(new RegExp(`\\b(GameObject|UIText|UIBox|UICircle|UIButton|List\\s*<[^>]+>|int|float|bool|string)\\s+${escaped}\\b`, "g"))];
   const match = matches.at(-1);
   if (!match) return null;
   if (match[1].startsWith("List")) return "List";
@@ -219,7 +288,7 @@ function collectSymbolCompletions(source: string) {
   const results: { label: string; type: string }[] = [];
   const seen = new Set<string>();
   const code = maskCommentsAndStrings(source);
-  const symbolPattern = /\b(?:GameObject|Text|List\s*<[^>]+>|int|float|bool|string)\s+([A-Za-z_][A-Za-z0-9_]*)\b/g;
+  const symbolPattern = /\b(?:GameObject|UIText|UIBox|UICircle|UIButton|List\s*<[^>]+>|int|float|bool|string)\s+([A-Za-z_][A-Za-z0-9_]*)\b/g;
   let match: RegExpExecArray | null;
   while ((match = symbolPattern.exec(code))) {
     if (!seen.has(match[1])) {

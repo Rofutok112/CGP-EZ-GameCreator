@@ -78,11 +78,11 @@ class Main
 
     void Update()
     {
-        if (key.Down("A"))
+        if (Input.GetKey("A"))
         {
             player.vx = -4;
         }
-        else if (key.Down("D"))
+        else if (Input.GetKey("D"))
         {
             player.vx = 4;
         }
@@ -94,14 +94,14 @@ class Main
 }
 ```
 
-`GameObject` と `Text` は作成後に自動描画されます。不要になったら `Destroy()` で削除できます。
+`GameObject` と UI オブジェクトは作成後に自動描画されます。不要になったら `Destroy()` で削除できます。
 
 座標の基準:
 
 - `GameObject.x` / `GameObject.y`: オブジェクトの中心
-- `Text.x` / `Text.y`: テキストの左上
+- `UIText` / `UIBox` / `UICircle` / `UIButton`: `x, y` は左上
 - `Create.Box` / `Create.Circle` / `Create.Sprite`: `x, y` は中心座標
-- `Create.Text`: `x, y` は左上座標
+- `Create.UIText` / `Create.UIBox` / `Create.UICircle` / `Create.UIButton`: `x, y` は左上座標
 
 ## 画像素材
 
@@ -126,8 +126,8 @@ player.flipX = true;
 音声を鳴らす場合:
 
 ```csharp
-sound.Play("sounds/jump");
-sound.Play("coin.wav", 0.5f);
+Sound.Play("sounds/jump");
+Sound.Play("coin.wav", 0.5f);
 ```
 
 2つ目の引数で音量を `0.0f` から `1.0f` の範囲で指定できます。省略した場合は標準音量で鳴ります。拡張子を省略した場合は、`mp3`, `wav`, `ogg`, `m4a` の順に探します。生徒ごとの `assets/` が優先され、その後に共通の `public/assets/` を探します。
@@ -138,7 +138,10 @@ sound.Play("coin.wav", 0.5f);
 Create.Box(x, y, width, height)
 Create.Circle(x, y, radius)
 Create.Sprite(name, x, y, width, height)
-Create.Text(value, x, y, size)
+Create.UIText(value, x, y, size)
+Create.UIBox(x, y, width, height)
+Create.UICircle(x, y, radius)
+Create.UIButton(text, x, y, width, height)
 
 obj.x
 obj.y
@@ -158,8 +161,13 @@ obj.Show()
 obj.Move(x, y)
 obj.Destroy()
 
-key.Down("A")
-key.Pressed("Space")
+button.Clicked()
+button.Down()
+
+Input.GetKey("A")
+Input.GetKeyDown("Space")
+Input.mouseX
+Input.mouseY
 
 Time.time
 Time.deltaTime
@@ -168,8 +176,8 @@ Time.frameCount
 Random.Range(min, max)
 Random.Chance(rate)
 
-sound.Play(name)
-sound.Play(name, volume)
+Sound.Play(name)
+Sound.Play(name, volume)
 
 Math.Round(value, digits)
 Math.Fixed(value, digits)
