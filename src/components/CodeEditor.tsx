@@ -55,6 +55,16 @@ const snippetCompletions = [
     type: "function",
     detail: "関数定義"
   }),
+  snippetCompletion("${int} ${FunctionName}()\n{\n    return ${value};\n}", {
+    label: "typed function",
+    type: "function",
+    detail: "戻り値あり関数"
+  }),
+  snippetCompletion("return ${value};", {
+    label: "return",
+    type: "keyword",
+    detail: "値を返す"
+  }),
   snippetCompletion("GameObject ${name};", {
     label: "GameObject field",
     type: "variable",
@@ -296,7 +306,7 @@ function collectSymbolCompletions(source: string) {
       results.push({ label: match[1], type: "variable" });
     }
   }
-  const methodPattern = /\bvoid\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/g;
+  const methodPattern = /\b(?:void|int|float|bool|string|GameObject|UIText|UIBox|UICircle|UIButton|List\s*<[^>]+>)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/g;
   while ((match = methodPattern.exec(code))) {
     if (!["Start", "Update"].includes(match[1]) && !seen.has(match[1])) {
       seen.add(match[1]);

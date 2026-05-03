@@ -43,6 +43,7 @@ type FieldDecl = {
 
 type MethodDecl = {
   name: string;
+  returnType: TypeName | "void";
   params: ParamDecl[];
   body: BlockStmt;
   token: Token;
@@ -60,7 +61,8 @@ type Stmt =
   | ExprStmt
   | IfStmt
   | ForStmt
-  | ForeachStmt;
+  | ForeachStmt
+  | ReturnStmt;
 
 type BlockStmt = { kind: "block"; statements: Stmt[]; token: Token };
 type VarDeclStmt = { kind: "var"; typeName: TypeName; name: string; initializer?: Expr; token: Token };
@@ -75,6 +77,7 @@ type ForStmt = {
   token: Token;
 };
 type ForeachStmt = { kind: "foreach"; typeName: TypeName; name: string; list: Expr; body: Stmt; token: Token };
+type ReturnStmt = { kind: "return"; value?: Expr; token: Token };
 
 type Expr =
   | LiteralExpr
@@ -159,6 +162,10 @@ export class DslError extends Error {
   constructor(public diagnostic: DslDiagnostic) {
     super(diagnostic.message);
   }
+}
+
+class ReturnSignal {
+  constructor(public readonly value: RuntimeValue, public readonly token: Token) {}
 }
 
 export function analyzeDsl(source: string): DslDiagnostic[] {
@@ -292,6 +299,7 @@ class StaticAnalyzer {
   private fields = new Map<string, StaticSymbol>();
   private methods = new Map<string, MethodDecl>();
   private phase: "field" | "Start" | "Update" = "field";
+  private currentReturnType: TypeName | "void" = "void";
 
   constructor(private readonly ast: ProgramAst) {}
 
@@ -347,12 +355,18 @@ class StaticAnalyzer {
 
   private analyzeUserMethod(method: MethodDecl) {
     const scope = new StaticScope(this.root);
+    const previousReturnType = this.currentReturnType;
+    this.currentReturnType = method.returnType;
     for (const param of method.params) {
       if (!scope.define(param.name, { type: param.typeName, token: param.token, assigned: true, field: false })) {
         this.add(param.token, `${param.name} はこの関数の引数としてすでに使われています。`);
       }
     }
     this.analyzeBlock(method.body, scope);
+    if (method.returnType !== "void" && !blockAlwaysReturns(method.body)) {
+      this.add(method.token, `${method.name} は ${method.returnType} を返す関数です。すべての流れで return が必要です。`);
+    }
+    this.currentReturnType = previousReturnType;
   }
 
   private analyzeBlock(block: BlockStmt, scope: StaticScope) {
@@ -395,8 +409,20 @@ class StaticAnalyzer {
         const child = new StaticScope(scope);
         child.define(stmt.name, { type: stmt.typeName, token: stmt.token, assigned: true, field: false });
         this.analyzeStmt(stmt.body, child);
+        return;
       }
-    }
+      case "return":
+        if (this.currentReturnType === "void") {
+          if (stmt.value) this.add(stmt.token, "void 関数では値を返せません。return; と書いてください。");
+          return;
+        }
+        if (!stmt.value) {
+          this.add(stmt.token, `${this.currentReturnType} を返す関数では return の後に値が必要です。`);
+          return;
+        }
+        this.expectAssignable(this.currentReturnType, this.typeOf(stmt.value, scope), stmt.token);
+        return;
+      }
   }
 
   private typeOf(expr: Expr, scope: StaticScope): StaticType {
@@ -598,7 +624,7 @@ class StaticAnalyzer {
         this.add(expr.token, `${method.name} の引数は ${method.params.length} 個です。現在は ${args.length} 個あります。`);
       }
       method.params.forEach((param, index) => this.expectAssignable(param.typeName, args[index] ?? "unknown", expr.token));
-      return "void";
+      return method.returnType;
     }
     if (expr.callee.kind !== "member") {
       this.add(expr.token, "呼び出せるのは Function(...) または obj.Method(...) 形式だけです。");
@@ -752,6 +778,17 @@ function isListType(type: StaticType): type is `List<${string}>` {
   return type.startsWith("List<");
 }
 
+function blockAlwaysReturns(block: BlockStmt): boolean {
+  return block.statements.some(stmtAlwaysReturns);
+}
+
+function stmtAlwaysReturns(stmt: Stmt): boolean {
+  if (stmt.kind === "return") return true;
+  if (stmt.kind === "block") return blockAlwaysReturns(stmt);
+  if (stmt.kind === "if") return Boolean(stmt.elseBranch) && stmtAlwaysReturns(stmt.thenBranch) && stmtAlwaysReturns(stmt.elseBranch as Stmt);
+  return false;
+}
+
 function diagnostic(token: Token, message: string): DslError {
   return new DslError({ severity: "error", line: token.line, column: token.column, message });
 }
@@ -834,8 +871,9 @@ function shouldEndThisLine(trimmed: string): boolean {
 function needsSemicolon(trimmed: string): boolean {
   if (trimmed.endsWith(";") || trimmed.endsWith("{") || trimmed.endsWith("}") || trimmed === "else") return false;
   if (/^(class|void|if|else if|else|for|foreach)\b/.test(trimmed)) return false;
+  if (/^(int|float|bool|string|GameObject|UIText|UIBox|UICircle|UIButton|List\s*<.+>)\s+[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(trimmed)) return false;
   if (/^[A-Za-z_][A-Za-z0-9_]*\s*:\s*$/.test(trimmed)) return false;
-  return /^(int|float|bool|string|GameObject|UIText|UIBox|UICircle|UIButton|List\s*<.+>)\s+[A-Za-z_][A-Za-z0-9_]*\b/.test(trimmed) || /=/.test(trimmed) || /\w+\s*\(.*\)/.test(trimmed);
+  return /^return\b/.test(trimmed) || /^(int|float|bool|string|GameObject|UIText|UIBox|UICircle|UIButton|List\s*<.+>)\s+[A-Za-z_][A-Za-z0-9_]*\b/.test(trimmed) || /=/.test(trimmed) || /\w+\s*\(.*\)/.test(trimmed);
 }
 
 function uniqueDiagnostics(items: DslDiagnostic[]): DslDiagnostic[] {
@@ -861,6 +899,7 @@ function lex(source: string): Token[] {
     "for",
     "foreach",
     "in",
+    "return",
     "new",
     "true",
     "false",
@@ -980,18 +1019,17 @@ class Parser {
     let update: BlockStmt | undefined;
 
     while (!this.check("symbol", "}") && !this.isAtEnd()) {
-      if (this.match("keyword", "void")) {
-        const token = this.previous();
-        const name = this.consumeIdentifier("メソッド名が必要です。Start, Update, または自分で作る関数名を書いてください。");
-        this.consume("symbol", "(", `${name.value} の後に ( が必要です。`);
-        const params = this.parseParams();
-        this.consume("symbol", ")", `${name.value} の引数の後に ) が必要です。`);
-        const block = this.parseBlock();
-        if (name.value === "Start") start = block;
-        else if (name.value === "Update") update = block;
-        else {
-          if (methods.has(name.value)) throw diagnostic(name, `${name.value} はすでに定義されています。`);
-          methods.set(name.value, { name: name.value, params, body: block, token });
+      if (this.check("keyword", "void") || (this.isTypeStart() && this.looksLikeMethod())) {
+        const method = this.parseMethod();
+        if (method.name === "Start") {
+          if (method.returnType !== "void") throw diagnostic(method.token, "Start は void Start() と書いてください。");
+          start = method.body;
+        } else if (method.name === "Update") {
+          if (method.returnType !== "void") throw diagnostic(method.token, "Update は void Update() と書いてください。");
+          update = method.body;
+        } else {
+          if (methods.has(method.name)) throw diagnostic(method.token, `${method.name} はすでに定義されています。`);
+          methods.set(method.name, method);
         }
       } else {
         fields.push(this.parseField());
@@ -1002,6 +1040,17 @@ class Parser {
     if (!start) throw diagnostic(this.peek(), "void Start() が必要です。ゲーム開始時の作成処理を書いてください。");
     if (!update) throw diagnostic(this.peek(), "void Update() が必要です。毎フレームの処理を書いてください。");
     return { fields, start, update, methods };
+  }
+
+  private parseMethod(): MethodDecl {
+    const token = this.peek();
+    const returnType = this.match("keyword", "void") ? "void" : this.parseType();
+    const name = this.consumeIdentifier("メソッド名が必要です。Start, Update, または自分で作る関数名を書いてください。");
+    this.consume("symbol", "(", `${name.value} の後に ( が必要です。`);
+    const params = this.parseParams();
+    this.consume("symbol", ")", `${name.value} の引数の後に ) が必要です。`);
+    const body = this.parseBlock();
+    return { name: name.value, returnType, params, body, token };
   }
 
   private parseParams(): ParamDecl[] {
@@ -1054,6 +1103,7 @@ class Parser {
     if (this.match("keyword", "if")) return this.parseIf(this.previous());
     if (this.match("keyword", "for")) return this.parseFor(this.previous());
     if (this.match("keyword", "foreach")) return this.parseForeach(this.previous());
+    if (this.match("keyword", "return")) return this.parseReturn(this.previous());
     if (this.isTypeStart()) return this.parseVarDecl(true);
     const token = this.peek();
     const expr = this.parseExpression();
@@ -1106,6 +1156,13 @@ class Parser {
     const list = this.parseExpression();
     this.consume("symbol", ")", "foreach の最後に ) が必要です。");
     return { kind: "foreach", typeName, name: name.value, list, body: this.parseStatement(), token };
+  }
+
+  private parseReturn(token: Token): ReturnStmt {
+    if (this.match("symbol", ";")) return { kind: "return", token };
+    const value = this.parseExpression();
+    this.consume("symbol", ";", "return 文の最後に ; が必要です。");
+    return { kind: "return", value, token };
   }
 
   private parseExpression(): Expr {
@@ -1244,6 +1301,22 @@ class Parser {
     return ["int", "float", "bool", "string", "GameObject", "UIText", "UIBox", "UICircle", "UIButton", "List"].includes(this.peek().value);
   }
 
+  private looksLikeMethod() {
+    let index = this.current;
+    if (this.tokens[index]?.value === "List") {
+      index += 1;
+      if (this.tokens[index]?.value !== "<") return false;
+      index += 1;
+      if (!this.tokens[index] || !["int", "float", "bool", "string", "GameObject", "UIText", "UIBox", "UICircle", "UIButton"].includes(this.tokens[index].value)) return false;
+      index += 1;
+      if (this.tokens[index]?.value !== ">") return false;
+      index += 1;
+    } else {
+      index += 1;
+    }
+    return this.tokens[index]?.kind === "identifier" && this.tokens[index + 1]?.value === "(";
+  }
+
   private match(kind: TokenKind, value?: string) {
     if (!this.check(kind, value)) return false;
     this.advance();
@@ -1335,13 +1408,21 @@ export class DslInstance {
 
   start() {
     if (this.started) return;
-    this.executeBlock(this.ast.start, new Scope(this.fields));
+    try {
+      this.executeBlock(this.ast.start, new Scope(this.fields));
+    } catch (signal) {
+      if (!(signal instanceof ReturnSignal)) throw signal;
+    }
     this.started = true;
   }
 
   update() {
     if (!this.started) this.start();
-    this.executeBlock(this.ast.update, new Scope(this.fields));
+    try {
+      this.executeBlock(this.ast.update, new Scope(this.fields));
+    } catch (signal) {
+      if (!(signal instanceof ReturnSignal)) throw signal;
+    }
   }
 
   reset() {
@@ -1401,7 +1482,10 @@ export class DslInstance {
           child.define(stmt.name, item);
           this.execute(stmt.body, child);
         }
+        return;
       }
+      case "return":
+        throw new ReturnSignal(stmt.value ? this.evaluate(stmt.value, scope) : null, stmt.token);
     }
   }
 
@@ -1567,6 +1651,10 @@ export class DslInstance {
     this.callDepth += 1;
     try {
       this.executeBlock(method.body, methodScope);
+      if (method.returnType !== "void") throw diagnostic(token, `${method.name} は値を返しませんでした。return を確認してください。`);
+    } catch (signal) {
+      if (signal instanceof ReturnSignal) return signal.value;
+      throw signal;
     } finally {
       this.callDepth -= 1;
     }

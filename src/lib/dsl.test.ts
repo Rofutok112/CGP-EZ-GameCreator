@@ -253,6 +253,115 @@ describe("DSL", () => {
     expect(host.entities[0].vx).toBe(5);
   });
 
+  it("supports typed user-defined functions for primitives, objects, UI, and lists", () => {
+    const code = `class Main
+{
+    UIText label;
+    UIBox panel;
+    GameObject player;
+    List<GameObject> enemies = new List<GameObject>();
+
+    void Start()
+    {
+        label = Create.UIText(MakeLabel(2), 20, 20, 20);
+        panel = MakePanel();
+        player = MakePlayer();
+        enemies = MakeEnemies();
+    }
+
+    void Update()
+    {
+        if (IsReady() && enemies.Count == 1)
+        {
+            player.x = player.x + Speed();
+        }
+    }
+
+    int Add(int a, int b)
+    {
+        return a + b;
+    }
+
+    float Speed()
+    {
+        return 2.5f;
+    }
+
+    bool IsReady()
+    {
+        return true;
+    }
+
+    string MakeLabel(int value)
+    {
+        return "Score: " + Add(value, 3);
+    }
+
+    GameObject MakePlayer()
+    {
+        return Create.Box(100, 100, 20, 20);
+    }
+
+    UIBox MakePanel()
+    {
+        return Create.UIBox(10, 10, 120, 40);
+    }
+
+    List<GameObject> MakeEnemies()
+    {
+        List<GameObject> result = new List<GameObject>();
+        result.Add(Create.Box(200, 100, 20, 20));
+        return result;
+    }
+}`;
+    const compiled = compileDsl(code);
+    expect(compiled.diagnostics).toEqual([]);
+    const host = new MockHost();
+    const instance = compiled.createInstance(host);
+    instance.start();
+    instance.update();
+    expect(host.entities[0]).toMatchObject({ kind: "UIText", value: "Score: 5" });
+    expect(host.entities[1]).toMatchObject({ kind: "UIBox" });
+    expect(host.entities[2]).toMatchObject({ kind: "GameObject", x: 102.5 });
+    expect(host.entities[3]).toMatchObject({ kind: "GameObject" });
+  });
+
+  it("reports return type mistakes", () => {
+    const diagnostics = analyzeDsl(`class Main
+{
+    void Start()
+    {
+        int value = MissingReturn();
+        BadVoid();
+    }
+
+    void Update()
+    {
+    }
+
+    int MissingReturn()
+    {
+        if (false)
+        {
+            return 1;
+        }
+    }
+
+    bool WrongType()
+    {
+        return 1;
+    }
+
+    void BadVoid()
+    {
+        return 1;
+    }
+}`);
+    expect(diagnostics.some((item) => item.message.includes("すべての流れで return"))).toBe(true);
+    expect(diagnostics.some((item) => item.message.includes("bool に int"))).toBe(true);
+    expect(diagnostics.some((item) => item.message.includes("void 関数では値を返せません"))).toBe(true);
+  });
+
   it("supports Math rounding helpers and float suffix literals", () => {
     const code = `class Main
 {

@@ -164,6 +164,14 @@ obj.Destroy()
 button.Clicked()
 button.Down()
 
+int Add(int a, int b)
+float GetSpeed()
+bool IsReady()
+string MakeLabel()
+GameObject MakeEnemy()
+List<GameObject> MakeEnemies()
+return value;
+
 Input.GetKey("A")
 Input.GetKeyDown("Space")
 Input.mouseX

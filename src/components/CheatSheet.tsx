@@ -77,6 +77,15 @@ const groups = [
     ]
   },
   {
+    title: "関数",
+    items: [
+      { name: "void Func()", description: "処理をまとめる。値は返さない", example: "void MovePlayer()\n{\n    player.x = player.x + 5.0f;\n}" },
+      { name: "int / float / bool / string Func()", description: "計算結果を返す", example: "int Add(int a, int b)\n{\n    return a + b;\n}" },
+      { name: "GameObject / UI / List<T> Func()", description: "オブジェクトやリストも返せる", example: "GameObject MakeEnemy()\n{\n    return Create.Box(500, 160, 32, 32);\n}" },
+      { name: "return", description: "関数の結果を返す。voidでは return; のみ", example: "bool IsRightSide(GameObject obj)\n{\n    return obj.x > 320.0f;\n}" }
+    ]
+  },
+  {
     title: "string",
     items: [
       { name: "Length", description: "文字数", example: "string text = \"hello\";\nint count = text.Length;" },
