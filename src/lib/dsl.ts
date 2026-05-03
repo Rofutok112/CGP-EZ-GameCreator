@@ -171,8 +171,8 @@ class ReturnSignal {
 export function analyzeDsl(source: string): DslDiagnostic[] {
   const surfaceDiagnostics = collectSurfaceDiagnostics(source);
   try {
-    const ast = parseSource(source);
-    return uniqueDiagnostics([...surfaceDiagnostics, ...new StaticAnalyzer(ast).analyze()]);
+    const parsed = parseSource(source);
+    return uniqueDiagnostics([...surfaceDiagnostics, ...parsed.diagnostics, ...new StaticAnalyzer(parsed.ast).analyze()]);
   } catch (error) {
     if (error instanceof DslError) return uniqueDiagnostics([...surfaceDiagnostics, error.diagnostic, ...collectLooseDiagnostics(source)]);
     return uniqueDiagnostics([
@@ -199,20 +199,21 @@ export function compileDsl(source: string): CompiledProgram {
     };
   }
   try {
-    const ast = parseSource(source);
-    const staticDiagnostics = new StaticAnalyzer(ast).analyze();
-    if (staticDiagnostics.some((item) => item.severity === "error")) {
+    const parsed = parseSource(source);
+    const staticDiagnostics = new StaticAnalyzer(parsed.ast).analyze();
+    const allDiagnostics = uniqueDiagnostics([...parsed.diagnostics, ...staticDiagnostics]);
+    if (allDiagnostics.some((item) => item.severity === "error")) {
       return {
-        diagnostics: uniqueDiagnostics(staticDiagnostics),
+        diagnostics: allDiagnostics,
         createInstance(host) {
           return new DslInstance({ fields: [], start: emptyBlock(), update: emptyBlock(), methods: new Map() }, host);
         }
       };
     }
     return {
-      diagnostics: uniqueDiagnostics(staticDiagnostics),
+      diagnostics: allDiagnostics,
       createInstance(host) {
-        return new DslInstance(ast, host);
+        return new DslInstance(parsed.ast, host);
       }
     };
   } catch (error) {
@@ -234,9 +235,11 @@ export function compileDsl(source: string): CompiledProgram {
   }
 }
 
-function parseSource(source: string): ProgramAst {
+function parseSource(source: string): { ast: ProgramAst; diagnostics: DslDiagnostic[] } {
   const tokens = lex(source);
-  return new Parser(tokens).parseProgram();
+  const parser = new Parser(tokens);
+  const ast = parser.parseProgram();
+  return { ast, diagnostics: uniqueDiagnostics(parser.diagnostics) };
 }
 
 function emptyBlock(): BlockStmt {
@@ -1150,11 +1153,13 @@ function lex(source: string): Token[] {
 
 class Parser {
   private current = 0;
+  diagnostics: DslDiagnostic[] = [];
 
   constructor(private readonly tokens: Token[]) {}
 
   parseProgram(): ProgramAst {
-    this.consume("keyword", "class", "最初に class を書いてください。");
+    if (!this.check("keyword", "class")) throw diagnostic(this.peek(), "最初に class を書いてください。");
+    this.advance();
     const className = this.consumeIdentifier("クラス名が必要です。例: class Player");
     this.consume("symbol", "{", `class ${className.value} の後に { が必要です。`);
 
@@ -1164,27 +1169,33 @@ class Parser {
     let update: BlockStmt | undefined;
 
     while (!this.check("symbol", "}") && !this.isAtEnd()) {
-      if (this.check("keyword", "void") || (this.isTypeStart() && this.looksLikeMethod())) {
-        const method = this.parseMethod();
-        if (method.name === "Start") {
-          if (method.returnType !== "void") throw diagnostic(method.token, "Start は void Start() と書いてください。");
-          start = method.body;
-        } else if (method.name === "Update") {
-          if (method.returnType !== "void") throw diagnostic(method.token, "Update は void Update() と書いてください。");
-          update = method.body;
+      try {
+        if (this.check("keyword", "void") || (this.isTypeStart() && this.looksLikeMethod())) {
+          const method = this.parseMethod();
+          if (method.name === "Start") {
+            if (method.returnType !== "void") this.addDiagnostic(method.token, "Start は void Start() と書いてください。");
+            start = method.body;
+          } else if (method.name === "Update") {
+            if (method.returnType !== "void") this.addDiagnostic(method.token, "Update は void Update() と書いてください。");
+            update = method.body;
+          } else {
+            if (methods.has(method.name)) this.addDiagnostic(method.token, `${method.name} はすでに定義されています。`);
+            methods.set(method.name, method);
+          }
         } else {
-          if (methods.has(method.name)) throw diagnostic(method.token, `${method.name} はすでに定義されています。`);
-          methods.set(method.name, method);
+          fields.push(this.parseField());
         }
-      } else {
-        fields.push(this.parseField());
+      } catch (error) {
+        if (error instanceof DslError) this.diagnostics.push(error.diagnostic);
+        else throw error;
+        this.synchronizeMember();
       }
     }
 
     this.consume("symbol", "}", `class ${className.value} の最後に } が必要です。`);
-    if (!start) throw diagnostic(this.peek(), "void Start() が必要です。ゲーム開始時の作成処理を書いてください。");
-    if (!update) throw diagnostic(this.peek(), "void Update() が必要です。毎フレームの処理を書いてください。");
-    return { fields, start, update, methods };
+    if (!start) this.addDiagnostic(this.peek(), "void Start() が必要です。ゲーム開始時の作成処理を書いてください。");
+    if (!update) this.addDiagnostic(this.peek(), "void Update() が必要です。毎フレームの処理を書いてください。");
+    return { fields, start: start ?? emptyBlock(), update: update ?? emptyBlock(), methods };
   }
 
   private parseMethod(): MethodDecl {
@@ -1223,13 +1234,14 @@ class Parser {
   private parseType(): TypeName {
     const token = this.advance();
     if (!["int", "float", "bool", "string", "GameObject", "UIText", "UIBox", "UICircle", "UIButton", "List"].includes(token.value)) {
-      throw diagnostic(token, "型名が必要です。int, float, bool, string, GameObject, UIText, UIBox, UICircle, UIButton, List<T> が使えます。");
+      this.addDiagnostic(token, "型名が必要です。int, float, bool, string, GameObject, UIText, UIBox, UICircle, UIButton, List<T> が使えます。");
+      return "int";
     }
     if (token.value !== "List") return token.value as TypeName;
     this.consume("operator", "<", "List の型は List<GameObject> のように書いてください。");
     const item = this.advance();
     if (!["int", "float", "bool", "string", "GameObject", "UIText", "UIBox", "UICircle", "UIButton"].includes(item.value)) {
-      throw diagnostic(item, "List<T> の T には int, float, bool, string, GameObject, UIText, UIBox, UICircle, UIButton が使えます。");
+      this.addDiagnostic(item, "List<T> の T には int, float, bool, string, GameObject, UIText, UIBox, UICircle, UIButton が使えます。");
     }
     this.consume("operator", ">", "List<T> の最後に > が必要です。");
     return `List<${item.value}>`;
@@ -1238,7 +1250,15 @@ class Parser {
   private parseBlock(): BlockStmt {
     const token = this.consume("symbol", "{", "ここには { が必要です。");
     const statements: Stmt[] = [];
-    while (!this.check("symbol", "}") && !this.isAtEnd()) statements.push(this.parseStatement());
+    while (!this.check("symbol", "}") && !this.isAtEnd()) {
+      try {
+        statements.push(this.parseStatement());
+      } catch (error) {
+        if (error instanceof DslError) this.diagnostics.push(error.diagnostic);
+        else throw error;
+        this.synchronizeStatement();
+      }
+    }
     this.consume("symbol", "}", "ブロックの最後に } が必要です。");
     return { kind: "block", statements, token };
   }
@@ -1431,7 +1451,7 @@ class Parser {
       this.consume("symbol", ")", "new List<T> の後に () が必要です。");
       return { kind: "newList", itemType: item.value, token: list };
     }
-    if (this.match("identifier") || this.match("keyword", "Create") || this.match("keyword", "Time") || this.match("keyword", "Random")) {
+    if (this.match("identifier") || this.match("keyword", "Create") || this.match("keyword", "Input") || this.match("keyword", "Time") || this.match("keyword", "Random") || this.match("keyword", "Math") || this.match("keyword", "Game") || this.match("keyword", "Sound") || this.match("keyword", "Camera")) {
       return { kind: "identifier", name: this.previous().value, token: this.previous() };
     }
     if (this.match("symbol", "(")) {
@@ -1439,7 +1459,9 @@ class Parser {
       this.consume("symbol", ")", "式の最後に ) が必要です。");
       return expr;
     }
-    throw diagnostic(this.peek(), "式が必要です。");
+    this.addDiagnostic(this.peek(), "式が必要です。");
+    if (!this.isAtEnd()) this.advance();
+    return { kind: "literal", value: 0, token: this.previous() };
   }
 
   private isTypeStart() {
@@ -1474,20 +1496,28 @@ class Parser {
       const previous = this.previous();
       const current = this.peek();
       if (current.line > previous.line || current.kind === "eof") {
-        throw diagnostic({ ...previous, column: previous.column + Math.max(previous.value.length, 1) }, message);
+        const token = { ...previous, column: previous.column + Math.max(previous.value.length, 1) };
+        this.addDiagnostic(token, message);
+        return { kind, value, line: token.line, column: token.column } as Token;
       }
     }
-    throw diagnostic(this.peek(), message);
+    const token = this.peek();
+    this.addDiagnostic(token, message);
+    return { kind, value, line: token.line, column: token.column } as Token;
   }
 
   private consumeIdentifier(message: string) {
     if (this.check("identifier")) return this.advance();
-    throw diagnostic(this.peek(), message);
+    const token = this.peek();
+    this.addDiagnostic(token, message);
+    return { kind: "identifier", value: "__missing", line: token.line, column: token.column } as Token;
   }
 
   private consumeName(message: string) {
     if (this.check("identifier") || this.check("keyword")) return this.advance();
-    throw diagnostic(this.peek(), message);
+    const token = this.peek();
+    this.addDiagnostic(token, message);
+    return { kind: "identifier", value: "__missing", line: token.line, column: token.column } as Token;
   }
 
   private check(kind: TokenKind, value?: string) {
@@ -1511,6 +1541,31 @@ class Parser {
 
   private previous() {
     return this.tokens[this.current - 1];
+  }
+
+  private addDiagnostic(token: Token, message: string) {
+    this.diagnostics.push({ severity: "error", line: token.line, column: token.column, message });
+  }
+
+  private synchronizeStatement() {
+    while (!this.isAtEnd()) {
+      if (this.previous()?.value === ";") return;
+      if (this.check("symbol", "}") || this.check("keyword", "else")) return;
+      if (this.peek().line > this.previous()?.line && this.isStatementBoundary()) return;
+      this.advance();
+    }
+  }
+
+  private synchronizeMember() {
+    while (!this.isAtEnd()) {
+      if (this.check("symbol", "}")) return;
+      if (this.peek().line > this.previous()?.line && (this.check("keyword", "void") || this.isTypeStart())) return;
+      this.advance();
+    }
+  }
+
+  private isStatementBoundary() {
+    return this.check("keyword", "if") || this.check("keyword", "for") || this.check("keyword", "foreach") || this.check("keyword", "return") || this.isTypeStart() || this.check("identifier");
   }
 }
 

@@ -249,6 +249,28 @@ describe("DSL", () => {
     expect(diagnostics.some((item) => item.message.includes("missing"))).toBe(true);
   });
 
+  it("recovers parser state and continues full static analysis", () => {
+    const diagnostics = analyzeDsl(`class Main
+{
+    GameObject player
+    int score = "bad";
+
+    void Start()
+    {
+        player = Create.Box(100, 160, 36, 36);
+    }
+
+    void Update()
+    {
+        score = true;
+    }
+}`);
+
+    expect(diagnostics.some((item) => item.message.includes(";"))).toBe(true);
+    expect(diagnostics.some((item) => item.message.includes("int に string"))).toBe(true);
+    expect(diagnostics.some((item) => item.message.includes("int に bool"))).toBe(true);
+  });
+
   it("supports user-defined void functions with parameters", () => {
     const code = `class Main
 {
