@@ -566,6 +566,60 @@ describe("DSL", () => {
     expect(host.resetRequested).toBe(true);
   });
 
+  it("detects top edge with TouchWall", () => {
+    const code = `class Main
+{
+    GameObject box;
+
+    void Start()
+    {
+        box = Create.Box(100, 10, 20, 20);
+        if (box.TouchWall())
+        {
+            Game.Reset();
+        }
+    }
+
+    void Update()
+    {
+    }
+}`;
+    const compiled = compileDsl(code);
+    expect(compiled.diagnostics).toEqual([]);
+    const host = new MockHost();
+    compiled.createInstance(host).start();
+    expect(host.entities[0]).toMatchObject({ y: 10, height: 20 });
+    expect(host.resetRequested).toBe(true);
+  });
+
+  it("detects top edge with TouchWall before velocity is applied", () => {
+    const code = `class Main
+{
+    GameObject box;
+
+    void Start()
+    {
+        box = Create.Box(100, 15, 20, 20);
+    }
+
+    void Update()
+    {
+        box.vy = -10;
+        if (box.TouchWall())
+        {
+            Game.Reset();
+        }
+    }
+}`;
+    const compiled = compileDsl(code);
+    expect(compiled.diagnostics).toEqual([]);
+    const host = new MockHost();
+    const instance = compiled.createInstance(host);
+    instance.start();
+    instance.update();
+    expect(host.resetRequested).toBe(true);
+  });
+
   it("plays sounds with optional volume", () => {
     const code = `class Main
 {

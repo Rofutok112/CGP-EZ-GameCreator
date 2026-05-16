@@ -26,8 +26,13 @@ export function CodePreview({
 
   useEffect(() => {
     if (!autoFollowCursor || !followCursor || !cursorLine) return;
-    const target = ref.current?.querySelector<HTMLElement>(".teacher-cursor-marker") ?? ref.current?.querySelector<HTMLElement>(`[data-code-line="${cursorLine}"]`);
-    target?.scrollIntoView({ block: "center", inline: "center" });
+    const container = ref.current;
+    const target = container?.querySelector<HTMLElement>(".teacher-cursor-marker") ?? container?.querySelector<HTMLElement>(`[data-code-line="${cursorLine}"]`);
+    if (!container || !target) return;
+    const top = target.offsetTop - container.clientHeight / 2 + target.offsetHeight / 2;
+    const left = target.offsetLeft - container.clientWidth / 2 + target.offsetWidth / 2;
+    container.scrollTop = Math.max(0, top);
+    container.scrollLeft = Math.max(0, left);
   }, [autoFollowCursor, code, cursorLine, cursorColumn, followCursor]);
 
   const pauseFollow = () => {

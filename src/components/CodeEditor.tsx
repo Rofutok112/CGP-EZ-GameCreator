@@ -322,6 +322,49 @@ function maskCommentsAndStrings(source: string) {
     .replace(/"(?:\\.|[^"\\])*"?/g, "\"\"");
 }
 
+function smartPaste(event: ClipboardEvent, view: EditorView): boolean {
+  const text = event.clipboardData?.getData("text/plain");
+  if (!text || !text.includes("\n")) return false;
+
+  const selection = view.state.selection.main;
+  const line = view.state.doc.lineAt(selection.from);
+  const beforeCursor = line.text.slice(0, selection.from - line.from);
+  const lineIndent = line.text.match(/^\s*/)?.[0] ?? "";
+  const cursorAfterIndentOnly = beforeCursor.trim().length === 0;
+  const baseIndent = cursorAfterIndentOnly ? beforeCursor : lineIndent;
+  const insert = reindentPastedCode(text, baseIndent);
+
+  event.preventDefault();
+  view.dispatch({
+    changes: { from: selection.from, to: selection.to, insert },
+    selection: { anchor: selection.from + insert.length },
+    scrollIntoView: true,
+    userEvent: "input.paste"
+  });
+  return true;
+}
+
+function reindentPastedCode(text: string, baseIndent: string) {
+  const normalized = text.replace(/\r\n?/g, "\n").replace(/\t/g, "    ");
+  const keepsFinalNewline = normalized.endsWith("\n");
+  const lines = normalized.split("\n");
+  if (keepsFinalNewline) lines.pop();
+
+  const contentLines = lines.filter((line) => line.trim().length > 0);
+  const commonIndent = contentLines.length > 0 ? Math.min(...contentLines.map(countLeadingSpaces)) : 0;
+  const stripped = lines.map((line) => line.trim().length > 0 ? line.slice(Math.min(commonIndent, countLeadingSpaces(line))) : "");
+  const pasted = stripped.map((line, index) => {
+    if (index === 0) return line;
+    return line.length > 0 ? `${baseIndent}${line}` : "";
+  }).join("\n");
+
+  return keepsFinalNewline ? `${pasted}\n` : pasted;
+}
+
+function countLeadingSpaces(text: string) {
+  return text.match(/^ */)?.[0].length ?? 0;
+}
+
 function smartEnter(view: EditorView): boolean {
   const selection = view.state.selection.main;
   if (!selection.empty) return false;
@@ -572,6 +615,9 @@ export const CodeEditor = forwardRef<CodeEditorHandle, {
         bracketMatching(),
         highlightActiveLine(),
         autocompletion({ override: [dslCompletions] }),
+        EditorView.domEventHandlers({
+          paste: smartPaste
+        }),
         keymap.of([
           { key: "Tab", run: smartTab },
           { key: "Enter", run: smartEnter },

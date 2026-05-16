@@ -1930,7 +1930,8 @@ export class DslInstance {
     if (method === "Touch") return this.host.touch(entity, this.expectEntity(args[0], token));
     if (method === "TouchWall") {
       const bounds = entityBounds(entity);
-      return bounds.left <= 0 || bounds.top <= 0 || bounds.right >= this.host.width || bounds.bottom >= this.host.height;
+      const nextBounds = entityBounds(entity, entity.vx, entity.vy);
+      return touchesHostWall(bounds, this.host) || touchesHostWall(nextBounds, this.host);
     }
     if (method === "Hide") {
       entity.visible = false;
@@ -2002,21 +2003,25 @@ function assertAlive(entity: RuntimeEntity, token: Token) {
   if (entity.destroyed) throw diagnostic(token, "Destroy() されたオブジェクトにはアクセスできません。リストから Remove するか、新しく作り直してください。");
 }
 
-function entityBounds(entity: RuntimeEntity) {
+function entityBounds(entity: RuntimeEntity, offsetX = 0, offsetY = 0) {
   if (isScreenEntity(entity)) {
     return {
-      left: entity.x,
-      top: entity.y,
-      right: entity.x + entity.width,
-      bottom: entity.y + entity.height
+      left: entity.x + offsetX,
+      top: entity.y + offsetY,
+      right: entity.x + offsetX + entity.width,
+      bottom: entity.y + offsetY + entity.height
     };
   }
   return {
-    left: entity.x - entity.width / 2,
-    top: entity.y - entity.height / 2,
-    right: entity.x + entity.width / 2,
-    bottom: entity.y + entity.height / 2
+    left: entity.x + offsetX - entity.width / 2,
+    top: entity.y + offsetY - entity.height / 2,
+    right: entity.x + offsetX + entity.width / 2,
+    bottom: entity.y + offsetY + entity.height / 2
   };
+}
+
+function touchesHostWall(bounds: { left: number; top: number; right: number; bottom: number }, host: RuntimeHost) {
+  return bounds.left <= 0 || bounds.top <= 0 || bounds.right >= host.width || bounds.bottom >= host.height;
 }
 
 function isScreenEntity(entity: RuntimeEntity): boolean {
